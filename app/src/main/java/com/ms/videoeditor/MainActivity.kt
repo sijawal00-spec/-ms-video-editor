@@ -8,6 +8,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -278,6 +282,7 @@ private fun EditorScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var editTrayOpen by remember { mutableStateOf(false) }
+    var clipMuted by remember(uri) { mutableStateOf(false) }
     val durationMs = remember(uri) {
         try {
             val retriever = android.media.MediaMetadataRetriever()
@@ -286,6 +291,19 @@ private fun EditorScreen(
             retriever.release()
             d
         } catch (_: Exception) { 0L }
+    }
+    val timelineFrames = remember(uri, durationMs) {
+        val frames = mutableListOf<android.graphics.Bitmap>()
+        try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, uri)
+            for (index in 0 until 7) {
+                val timeUs = if (durationMs > 0L) (durationMs * index / 7) * 1000L else 0L
+                retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { frames.add(it) }
+            }
+            retriever.release()
+        } catch (_: Exception) {}
+        frames
     }
     var trimRange by remember(uri, durationMs) { mutableStateOf(0f..durationMs.toFloat()) }
     var splitPoint by remember(uri) { mutableFloatStateOf(durationMs / 2f) }
@@ -303,30 +321,111 @@ private fun EditorScreen(
     LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
     LaunchedEffect(playing, player) { player.playWhenReady = playing }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
-            Text("New Project", color = Color.White, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) { Text("Export", color = Green) }
+    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
+        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Close project", tint = Color.White) }
+            IconButton(onClick = { onTool("Search") }) { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White) }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { onTool("AI UHD") }) { Text("AI UHD  ▾", color = Color.White, fontSize = 12.sp) }
+            Button(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) },
+                colors = ButtonDefaults.buttonColors(containerColor = Emerald),
+                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 7.dp)) { Text("Export", color = Black, fontSize = 13.sp) }
         }
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-            AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false } },
-                update = { it.player = player }, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
+            AndroidView(factory = { ctx -> PlayerView(ctx).apply {
+                this.player = player
+                useController = false
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+            } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
             if (overlayText.isNotBlank()) {
-                Text(overlayText, color = Color.White, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center)
-                    .background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
+                Text(overlayText, color = Color.White, fontSize = 24.sp,
+                    modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(formatTime(player.currentPosition), color = Color.White, fontSize = 12.sp)
-            Spacer(Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().height(48.dp).background(Panel), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly) {
+            IconButton(onClick = { onTool("Fullscreen") }) { Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen", tint = Color.White) }
             IconButton(onClick = { playing = !playing }) {
-                Icon(if (playing) Icons.Default.PauseCircle else Icons.Default.PlayCircle, contentDescription = "Play/Pause", tint = Green, modifier = Modifier.size(36.dp))
+                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", tint = Green, modifier = Modifier.size(30.dp))
             }
-            Spacer(Modifier.weight(1f))
-            Text(formatTime(durationMs), color = Muted, fontSize = 12.sp)
+            IconButton(onClick = {
+                if (durationMs > 1000L) {
+                    val cut = player.currentPosition.coerceIn(1L, durationMs - 1L)
+                    onSplit(0L, cut, durationMs)
+                }
+            }) { Icon(Icons.Default.ContentCut, contentDescription = "Split at playhead", tint = Color.White) }
+            IconButton(onClick = { onTool("Keyframe") }) { Icon(Icons.Default.Diamond, contentDescription = "Keyframe", tint = Color.White) }
+            IconButton(onClick = { player.seekTo((player.currentPosition - 1000L).coerceAtLeast(0L)) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
+            IconButton(onClick = { player.seekTo((player.currentPosition + 1000L).coerceAtMost(durationMs)) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
-        Text("TIMELINE  •  $activeTool", color = Gold, fontSize = 11.sp)
+        Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(formatTime(player.currentPosition), color = Color.White, fontSize = 10.sp)
+            Spacer(Modifier.weight(1f))
+            Text("00:00      •      00:02      •      00:04      •      00:06", color = Muted, fontSize = 10.sp)
+            Spacer(Modifier.weight(1f))
+            Text(formatTime(durationMs), color = Muted, fontSize = 10.sp)
+        }
+        Row(Modifier.fillMaxWidth().height(86.dp).background(Panel, RoundedCornerShape(8.dp)).padding(5.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(48.dp).fillMaxHeight().clickable {
+                clipMuted = !clipMuted
+                player.volume = if (clipMuted) 0f else 1f
+            }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Icon(if (clipMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, contentDescription = "Mute clip",
+                    tint = if (clipMuted) Green else Color.White, modifier = Modifier.size(21.dp))
+                Text(if (clipMuted) "Muted" else "Mute\nclip", color = Color.White, fontSize = 8.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            Column(Modifier.width(48.dp).fillMaxHeight().clickable { onTool("Cover") },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                if (timelineFrames.isNotEmpty()) {
+                    Image(bitmap = timelineFrames.first().asImageBitmap(), contentDescription = "Video cover",
+                        modifier = Modifier.size(38.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                } else {
+                    Box(Modifier.size(38.dp).background(Panel2, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Image, contentDescription = "Cover", tint = Color.White)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Cover", color = Color.White, fontSize = 8.sp)
+                    Icon(Icons.Default.Edit, contentDescription = "Edit cover", tint = Green, modifier = Modifier.size(10.dp))
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                Row(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).clickable {
+                    player.seekTo(0L)
+                    playing = false
+                }) {
+                    if (timelineFrames.isNotEmpty()) {
+                        timelineFrames.forEach { frame ->
+                            Image(bitmap = frame.asImageBitmap(), contentDescription = "Video frame",
+                                modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize().background(Panel2), contentAlignment = Alignment.Center) {
+                            Text("VIDEO CLIP", color = Color.White, fontSize = 10.sp)
+                        }
+                    }
+                }
+                Box(Modifier.align(Alignment.TopCenter).width(2.dp).fillMaxHeight().background(Color.White))
+                IconButton(onClick = onAddMedia, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp).background(Color.White, RoundedCornerShape(8.dp))) {
+                    Icon(Icons.Default.Add, contentDescription = "Add video clip", tint = Black)
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(36.dp).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
+            Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                Text(if (audioUri == null) "+ Add audio" else "♪ \${audioUri.lastPathSegment ?: "Audio"}",
+                    color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(36.dp).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
+            Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onTool("Text") }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                Text(if (overlayText.isBlank()) "+ Add text" else overlayText, color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
+            }
+        }
         when (activeTool) {
             "Trim" -> {
                 if (durationMs > 0L) {
@@ -376,16 +475,6 @@ private fun EditorScreen(
                 Text("This button now opens its own tool panel; processing will be added in the next development stage.", color = Muted, fontSize = 11.sp)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("V1", color = Green, fontSize = 11.sp)
-            Spacer(Modifier.width(8.dp))
-            Box(Modifier.weight(1f).height(42.dp).background(Color(0xFF24533F), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                Text("VIDEO CLIP", color = Color.White, fontSize = 11.sp)
-            }
-            IconButton(onClick = onAddMedia) { Icon(Icons.Default.Add, contentDescription = "Add video", tint = Green) }
-        }
-        Spacer(Modifier.height(8.dp))
         val editorTools = listOf(
             "Edit" to Icons.Default.ContentCut,
             "Audio" to Icons.Default.MusicNote,
