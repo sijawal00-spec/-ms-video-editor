@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
@@ -282,6 +283,7 @@ private fun EditorScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var editTrayOpen by remember { mutableStateOf(false) }
+    var clipSelected by remember(uri) { mutableStateOf(false) }
     var clipMuted by remember(uri) { mutableStateOf(false) }
     val durationMs = remember(uri) {
         try {
@@ -385,10 +387,17 @@ private fun EditorScreen(
                 }
             }
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                Row(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).clickable {
-                    player.seekTo(0L)
-                    playing = false
-                }) {
+                Row(
+                    Modifier.fillMaxSize()
+                        .clip(RoundedCornerShape(6.dp))
+                        .then(if (clipSelected) Modifier.border(2.dp, Emerald, RoundedCornerShape(6.dp)) else Modifier)
+                        .clickable {
+                            clipSelected = true
+                            editTrayOpen = true
+                            playing = false
+                            onTool("Edit")
+                        }
+                ) {
                     if (timelineFrames.isNotEmpty()) {
                         timelineFrames.forEach { frame ->
                             Image(bitmap = frame.asImageBitmap(), contentDescription = "Video frame",
