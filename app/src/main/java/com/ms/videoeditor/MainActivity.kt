@@ -401,28 +401,8 @@ private fun EditorScreen(
             "Aspect ratio" to Icons.Default.Crop,
             "Background" to Icons.Default.Wallpaper
         )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            editorTools.forEach { (tool, icon) ->
-                Column(
-                    Modifier.width(66.dp).height(68.dp)
-                        .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(10.dp))
-                         .clickable { editTrayOpen = (tool == "Edit"); onTool(tool) }.padding(horizontal = 3.dp, vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(icon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(23.dp))
-                    Spacer(Modifier.height(4.dp))
-                    Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 1)
-                }
-            }
-        }
         val editTools = listOf(
-            "Trim", "Split", "Merge", "Transitions",
-            "Animations", "Effects", "Speed", "Delete",
+            "Split", "Animations", "Effects", "Speed", "Delete",
             "AI video", "Crop", "Duplicate", "Replace", "Overlay",
             "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
             "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
@@ -430,40 +410,72 @@ private fun EditorScreen(
             "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
             "Freeze", "Reverse", "Mask", "Unlink"
         )
-        if (editTrayOpen || activeTool == "Edit" || editTools.contains(activeTool)) {
-            Column(
-                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(vertical = 8.dp)
+        // The same bottom toolbar switches between the main tools and the Edit tools.
+        // This avoids rendering a duplicate tool strip.
+        if (editTrayOpen) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("EDIT TOOLS", color = Green, fontSize = 10.sp, modifier = Modifier.padding(start = 10.dp, bottom = 6.dp))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    Modifier.width(42.dp).height(68.dp).clickable { editTrayOpen = false }.padding(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    editTools.forEach { tool ->
-                        Column(
-                            Modifier.width(62.dp).height(66.dp)
-                                .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(8.dp))
-                                .clickable { onTool(tool) }.padding(horizontal = 2.dp, vertical = 5.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            val toolIcon = when (tool) {
-                                "Trim", "Split" -> Icons.Default.ContentCut
-                                "Merge", "Duplicate", "Overlay" -> Icons.Default.Layers
-                                "Animations", "Effects", "AI video", "AI remix" -> Icons.Default.AutoAwesome
-                                "Speed", "Opacity", "Adjust" -> Icons.Default.Tune
-                                "Delete", "Remove BG", "AI remove" -> Icons.Default.Delete
-                                "Crop", "Transform", "Auto reframe" -> Icons.Default.Crop
-                                "Filters" -> Icons.Default.FilterVintage
-                                "Isolate voice", "Enhance voice" -> Icons.Default.MusicNote
-                                "Freeze", "Reverse" -> Icons.Default.PlayArrow
-                                else -> Icons.Default.Tune
-                            }
-                            Icon(toolIcon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.height(4.dp))
-                            Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        }
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = Color.White, modifier = Modifier.size(23.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("Back", color = Color.White, fontSize = 9.sp)
+                }
+                editTools.forEach { tool ->
+                    val toolIcon = when (tool) {
+                        "Split" -> Icons.Default.ContentCut
+                        "Animations", "Effects", "AI video", "AI remix" -> Icons.Default.AutoAwesome
+                        "Speed", "Opacity", "Adjust" -> Icons.Default.Tune
+                        "Delete", "Remove BG", "AI remove" -> Icons.Default.Delete
+                        "Crop", "Transform", "Auto reframe" -> Icons.Default.Crop
+                        "Filters" -> Icons.Default.FilterVintage
+                        "Overlay", "Duplicate" -> Icons.Default.Layers
+                        "Isolate voice", "Enhance voice" -> Icons.Default.MusicNote
+                        "Freeze", "Reverse" -> Icons.Default.PlayArrow
+                        else -> Icons.Default.Tune
+                    }
+                    Column(
+                        Modifier.width(62.dp).height(68.dp)
+                            .clickable { onTool(tool) }.padding(horizontal = 2.dp, vertical = 5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(toolIcon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                editorTools.forEach { (tool, icon) ->
+                    Column(
+                        Modifier.width(66.dp).height(68.dp)
+                            .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(10.dp))
+                            .clickable {
+                                if (tool == "Edit") {
+                                    editTrayOpen = true
+                                    onTool("Edit")
+                                } else {
+                                    onTool(tool)
+                                }
+                            }.padding(horizontal = 3.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(icon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(23.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 1)
                     }
                 }
             }
