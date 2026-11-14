@@ -373,9 +373,9 @@ private fun EditorScreen(
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 if (timelineFrames.isNotEmpty()) {
                     Image(bitmap = timelineFrames.first().asImageBitmap(), contentDescription = "Video cover",
-                        modifier = Modifier.size(26.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Crop)
+                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Crop)
                 } else {
-                    Box(Modifier.size(26.dp).background(Panel2, RoundedCornerShape(5.dp)), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(36.dp).background(Panel2, RoundedCornerShape(5.dp)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Image, contentDescription = "Cover", tint = Color.White)
                     }
                 }
@@ -405,15 +405,19 @@ private fun EditorScreen(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(30.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
+        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
+            }
             Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                 Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
                     color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
             }
         }
-        Row(Modifier.fillMaxWidth().height(36.dp).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
+        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
+            }
             Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onTool("Text") }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                 Text(if (overlayText.isBlank()) "+ Add text" else overlayText, color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
             }
