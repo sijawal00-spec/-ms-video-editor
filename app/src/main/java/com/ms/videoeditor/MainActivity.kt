@@ -421,7 +421,8 @@ private fun EditorScreen(
         }
         if (activeTool == "Edit") {
             val editTools = listOf(
-                "Split", "Animations", "Effects", "Speed", "Delete",
+                "Trim", "Split", "Merge", "Transitions",
+                "Animations", "Effects", "Speed", "Delete",
                 "AI video", "Crop", "Duplicate", "Replace", "Overlay",
                 "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
                 "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
