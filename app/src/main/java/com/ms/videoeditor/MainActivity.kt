@@ -2,7 +2,6 @@ package com.ms.videoeditor
 
 import android.net.Uri
 import android.os.Bundle
-import android.widget.VideoView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,9 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.launch
 
 private val Black = Color(0xFF050807)
 private val Panel = Color(0xFF111816)
@@ -47,52 +53,72 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun MSVideoEditorApp() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var videoUri by remember { mutableStateOf<Uri?>(null) }
+    var audioUri by remember { mutableStateOf<Uri?>(null) }
     var activeTool by remember { mutableStateOf("Trim") }
     var page by remember { mutableStateOf("Home") }
     var dialog by remember { mutableStateOf<String?>(null) }
-    var recentProjects by remember { mutableStateOf(listOf<Uri>()) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val prefs = remember { context.getSharedPreferences("ms_video_editor", android.content.Context.MODE_PRIVATE) }
+    var recentProjects by remember {
+        mutableStateOf(prefs.getStringSet("recent_projects", emptySet())!!.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() })
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             videoUri = uri
-            recentProjects = (listOf(uri) + recentProjects.filter { it != uri }).take(8)
+            recentProjects = (listOf(uri) + recentProjects.filter { it != uri }).take(30)
+            prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
+        }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            audioUri = uri
         }
     }
     fun startProject(tool: String) {
         activeTool = tool
-        picker.launch(arrayOf("video/*"))
+        videoPicker.launch(arrayOf("video/*"))
     }
-
     MaterialTheme(colorScheme = darkColorScheme(primary = Emerald, secondary = Gold, background = Black, surface = Panel)) {
         Surface(Modifier.fillMaxSize(), color = Black) {
             when {
                 videoUri != null -> EditorScreen(
                     uri = videoUri!!,
+                    audioUri = audioUri,
                     activeTool = activeTool,
-                    onTool = { activeTool = it; dialog = it },
-                    onBack = { videoUri = null; page = "Home" },
-                    onAddMedia = { picker.launch(arrayOf("video/*")) },
+                    onTool = { activeTool = it },
+                    onBack = { videoUri = null; audioUri = null; page = "Home" },
+                    onAddMedia = { videoPicker.launch(arrayOf("video/*")) },
+                    onPickAudio = { audioPicker.launch(arrayOf("audio/*")) },
                     onExport = { startMs, endMs ->
-                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { success, message ->
+                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                         }
+                    },
+                    onSplit = { startMs, splitMs, endMs ->
+                        if (splitMs > startMs && endMs > splitMs) {
+                            exportTrimmedVideo(context, videoUri!!, startMs, splitMs) { _, message ->
+                                Toast.makeText(context, "Part 1: $message", Toast.LENGTH_LONG).show()
+                            }
+                            exportTrimmedVideo(context, videoUri!!, splitMs, endMs) { _, message ->
+                                Toast.makeText(context, "Part 2: $message", Toast.LENGTH_LONG).show()
+                            }
+                        } else Toast.makeText(context, "Move the split point away from the ends.", Toast.LENGTH_SHORT).show()
                     }
                 )
                 page == "Home" -> HomeScreen(
                     projects = recentProjects,
                     onNew = { startProject("Trim") },
                     onTool = { startProject(it) },
-                    onProject = { videoUri = it },
+                    onProject = { videoUri = it; activeTool = "Trim" },
                     onSettings = { dialog = "Settings" },
                     onPremium = { dialog = "MS Premium" },
                     onPage = { page = it }
                 )
                 else -> SimplePage(
-                    page = page,
-                    projects = recentProjects,
+                    page = page, projects = recentProjects,
                     onBack = { page = "Home" },
                     onNew = { startProject("Trim") },
                     onProject = { videoUri = it },
@@ -106,14 +132,7 @@ private fun MSVideoEditorApp() {
                     titleContentColor = Color.White,
                     textContentColor = Muted,
                     title = { Text(dialog!!) },
-                    text = {
-                        Text(when (dialog) {
-                            "Export" -> "Export settings are being connected to the video rendering engine. This build does not yet create an exported video."
-                            "Settings" -> "MS Video Editor settings"
-                            "MS Premium" -> "Premium tools and subscriptions will be added later."
-                            else -> "$dialog tool selected. Select a video clip to use this editing workspace. Full processing for this tool is still under development."
-                        })
-                    },
+                    text = { Text(if (dialog == "Settings") "MS Video Editor settings" else "Premium options will be added in a later version.") },
                     confirmButton = { TextButton(onClick = { dialog = null }) { Text("OK", color = Emerald) } }
                 )
             }
@@ -123,12 +142,8 @@ private fun MSVideoEditorApp() {
 
 @Composable
 private fun HomeScreen(
-    projects: List<Uri>,
-    onNew: () -> Unit,
-    onTool: (String) -> Unit,
-    onProject: (Uri) -> Unit,
-    onSettings: () -> Unit,
-    onPremium: () -> Unit,
+    projects: List<Uri>, onNew: () -> Unit, onTool: (String) -> Unit,
+    onProject: (Uri) -> Unit, onSettings: () -> Unit, onPremium: () -> Unit,
     onPage: (String) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 15.dp)) {
@@ -144,13 +159,10 @@ private fun HomeScreen(
             IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White) }
             IconButton(onClick = onPremium) { Icon(Icons.Default.WorkspacePremium, contentDescription = "Premium", tint = Gold) }
         }
-        Box(
-            Modifier.fillMaxWidth().height(142.dp).background(
-                androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF22F000), Color(0xFF087A16), Color(0xFF031B0B))),
-                RoundedCornerShape(18.dp)
-            ).clickable { onNew() },
-            contentAlignment = Alignment.Center
-        ) {
+        Box(Modifier.fillMaxWidth().height(142.dp).background(
+            androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF22F000), Color(0xFF087A16), Color(0xFF031B0B))),
+            RoundedCornerShape(18.dp)
+        ).clickable { onNew() }, contentAlignment = Alignment.Center) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.AddCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
@@ -168,17 +180,15 @@ private fun HomeScreen(
             Triple("Effects", Icons.Default.AutoAwesome, "Effects"),
             Triple("Filters", Icons.Default.Tune, "Filters"),
             Triple("Transitions", Icons.Default.CompareArrows, "Transitions"),
-            Triple("Music", Icons.Default.MusicNote, "Music"),
+            Triple("Music", Icons.Default.MusicNote, "Audio"),
             Triple("Text", Icons.Default.Title, "Text"),
             Triple("Speed", Icons.Default.Speed, "Speed"),
-            Triple("Export", Icons.Default.IosShare, "Export")
+            Triple("Export", Icons.Default.IosShare, "Trim")
         )
         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
             tools.chunked(3).forEach { line ->
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    line.forEach { item ->
-                        ToolTile(item.first, item.second, Modifier.weight(1f)) { onTool(item.third) }
-                    }
+                    line.forEach { item -> ToolTile(item.first, item.second, Modifier.weight(1f)) { onTool(item.third) } }
                 }
             }
         }
@@ -218,11 +228,8 @@ private fun HomeScreen(
 
 @Composable
 private fun ToolTile(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    Column(
-        modifier.height(91.dp).background(Panel, RoundedCornerShape(13.dp)).clickable { onClick() }.padding(7.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
+    Column(modifier.height(91.dp).background(Panel, RoundedCornerShape(13.dp)).clickable { onClick() }.padding(7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Icon(icon, contentDescription = label, tint = Green, modifier = Modifier.size(28.dp))
         Spacer(Modifier.height(5.dp))
         Text(label, color = Color.White, fontSize = 11.sp)
@@ -246,19 +253,18 @@ private fun SimplePage(page: String, projects: List<Uri>, onBack: () -> Unit, on
         }
         when (page) {
             "Projects" -> {
-                if (projects.isEmpty()) Text("No saved projects yet. Create a new project to get started.", color = Muted)
+                if (projects.isEmpty()) Text("No projects yet. Create a new project to get started.", color = Muted)
                 projects.forEach { uri -> Text("▶  Video project", color = Color.White, modifier = Modifier.fillMaxWidth().clickable { onProject(uri) }.padding(16.dp)) }
                 Button(onClick = onNew, colors = ButtonDefaults.buttonColors(containerColor = Emerald)) { Text("New Project", color = Black) }
             }
             "Templates" -> {
-                Text("Templates", color = Green, fontSize = 18.sp)
-                Text("Video templates are coming soon.", color = Muted)
-                Button(onClick = { onInfo("Templates") }, colors = ButtonDefaults.buttonColors(containerColor = Panel2)) { Text("Explore templates") }
+                Text("Templates are not available yet.", color = Muted)
+                Button(onClick = { onInfo("Templates") }, colors = ButtonDefaults.buttonColors(containerColor = Panel2)) { Text("Templates info") }
             }
             else -> {
                 Icon(Icons.Default.Person, contentDescription = null, tint = Green, modifier = Modifier.size(50.dp))
                 Text("MS Video Editor Profile", color = Color.White, fontSize = 18.sp)
-                Text("Profile and account options will be added in a future update.", color = Muted)
+                Text("Profile options are not available yet.", color = Muted)
             }
         }
     }
@@ -266,92 +272,129 @@ private fun SimplePage(page: String, projects: List<Uri>, onBack: () -> Unit, on
 
 @Composable
 private fun EditorScreen(
-    uri: Uri,
-    activeTool: String,
-    onTool: (String) -> Unit,
-    onBack: () -> Unit,
-    onAddMedia: () -> Unit,
-    onExport: (Long, Long) -> Unit
+    uri: Uri, audioUri: Uri?, activeTool: String, onTool: (String) -> Unit,
+    onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit,
+    onExport: (Long, Long) -> Unit, onSplit: (Long, Long, Long) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val durationMs = remember(uri) {
         try {
             val retriever = android.media.MediaMetadataRetriever()
             retriever.setDataSource(context, uri)
-            val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val d = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             retriever.release()
-            duration
+            d
         } catch (_: Exception) { 0L }
     }
     var trimRange by remember(uri, durationMs) { mutableStateOf(0f..durationMs.toFloat()) }
+    var splitPoint by remember(uri) { mutableFloatStateOf(durationMs / 2f) }
+    var overlayText by remember(uri) { mutableStateOf("") }
+    var speed by remember(uri) { mutableFloatStateOf(1f) }
+    var playing by remember(uri) { mutableStateOf(true) }
+    val player = remember(uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+            playWhenReady = true
+        }
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
+    LaunchedEffect(playing, player) { player.playWhenReady = playing }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
             Text("New Project", color = Color.White, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) {
-                Text("Export", color = Green)
-            }
+            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) { Text("Export", color = Green) }
         }
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-            AndroidView(factory = { ctx -> VideoView(ctx).apply {
-                setVideoURI(uri)
-                setOnPreparedListener { player -> player.isLooping = true; start() }
-            } }, update = { view ->
-                if (view.tag != uri) {
-                    view.tag = uri
-                    view.setVideoURI(uri)
-                    view.setOnPreparedListener { player -> player.isLooping = true; view.start() }
-                }
-            }, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+            AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = this@EditorScreen.player; useController = false } },
+                update = { it.player = player }, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+            if (overlayText.isNotBlank()) {
+                Text(overlayText, color = Color.White, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
+            }
         }
-        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("00:00", color = Color.White, fontSize = 12.sp)
+            Text(formatTime(player.currentPosition), color = Color.White, fontSize = 12.sp)
             Spacer(Modifier.weight(1f))
-            Icon(Icons.Default.PlayCircle, contentDescription = "Preview", tint = Green, modifier = Modifier.size(36.dp))
+            IconButton(onClick = { playing = !playing }) {
+                Icon(if (playing) Icons.Default.PauseCircle else Icons.Default.PlayCircle, contentDescription = "Play/Pause", tint = Green, modifier = Modifier.size(36.dp))
+            }
             Spacer(Modifier.weight(1f))
             Text(formatTime(durationMs), color = Muted, fontSize = 12.sp)
         }
-        Spacer(Modifier.height(10.dp))
-        Text("TIMELINE  •  TRIM", color = Gold, fontSize = 11.sp)
-        if (durationMs > 0L) {
-            RangeSlider(
-                value = trimRange,
-                onValueChange = { trimRange = it },
-                valueRange = 0f..durationMs.toFloat(),
-                modifier = Modifier.fillMaxWidth(),
-                colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald)
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(trimRange.start.toLong()), color = Green, fontSize = 11.sp)
-                Text(formatTime(trimRange.endInclusive.toLong()), color = Muted, fontSize = 11.sp)
+        Text("TIMELINE  •  $activeTool", color = Gold, fontSize = 11.sp)
+        when (activeTool) {
+            "Trim" -> {
+                if (durationMs > 0L) {
+                    RangeSlider(value = trimRange, onValueChange = { trimRange = it }, valueRange = 0f..durationMs.toFloat(),
+                        colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatTime(trimRange.start.toLong()), color = Green, fontSize = 11.sp)
+                        Text(formatTime(trimRange.endInclusive.toLong()), color = Muted, fontSize = 11.sp)
+                    }
+                    Button(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
+                        Text("Export Trimmed Video", color = Black)
+                    }
+                } else Text("Could not read video duration.", color = Muted)
             }
-        } else {
-            Text("Video duration could not be read. Try another video.", color = Muted, fontSize = 11.sp)
+            "Split" -> {
+                if (durationMs > 1000L) {
+                    Slider(value = splitPoint, onValueChange = { splitPoint = it }, valueRange = 1f..(durationMs - 1).toFloat(),
+                        colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
+                    Text("Split at ${formatTime(splitPoint.toLong())}", color = Green, fontSize = 12.sp)
+                    Button(onClick = { onSplit(0L, splitPoint.toLong(), durationMs) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
+                        Text("Export Both Parts", color = Black)
+                    }
+                }
+            }
+            "Speed" -> {
+                Slider(value = speed, onValueChange = { speed = it }, valueRange = .25f..2f,
+                    colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
+                Text("Preview speed: ${"%.2f".format(speed)}x", color = Green, fontSize = 12.sp)
+                Text("Speed currently changes preview playback only; exported speed rendering is not connected yet.", color = Muted, fontSize = 11.sp)
+            }
+            "Text" -> {
+                OutlinedTextField(value = overlayText, onValueChange = { overlayText = it }, label = { Text("Text on video") },
+                    modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                Text("Text preview overlay. Burning text into the exported video is still being developed.", color = Muted, fontSize = 11.sp)
+            }
+            "Audio" -> {
+                Button(onClick = onPickAudio, colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.MusicNote, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Choose Audio", color = Black)
+                }
+                Text(if (audioUri == null) "No audio selected" else "Audio file selected: ${audioUri.lastPathSegment ?: "audio"}", color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
+                Text("Adding and mixing this track into the final exported video is not connected yet.", color = Muted, fontSize = 11.sp)
+            }
+            else -> {
+                Text("$activeTool controls are not implemented yet.", color = Muted, fontSize = 12.sp)
+                Text("This button now opens its own tool panel; processing will be added in the next development stage.", color = Muted, fontSize = 11.sp)
+            }
         }
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("V1", color = Green, fontSize = 11.sp)
             Spacer(Modifier.width(8.dp))
-            Box(Modifier.weight(1f).height(50.dp).background(Color(0xFF24533F), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+            Box(Modifier.weight(1f).height(42.dp).background(Color(0xFF24533F), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                 Text("VIDEO CLIP", color = Color.White, fontSize = 11.sp)
             }
             IconButton(onClick = onAddMedia) { Icon(Icons.Default.Add, contentDescription = "Add video", tint = Green) }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("Trim", "Split", "Audio", "Text", "Filters", "Effects", "Speed", "Crop", "Transitions", "Merge").forEach { tool ->
                 FilterChip(selected = activeTool == tool, onClick = { onTool(tool) }, label = { Text(tool) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Emerald, selectedLabelColor = Black, labelColor = Color.White))
             }
         }
-        Text("$activeTool selected", color = Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-        Text("Adjust the trim handles to choose the part to keep, then tap Export.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
     }
 }
 
 private fun formatTime(milliseconds: Long): String {
-    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
-    return String.format("%02d:%02d", totalSeconds / 60L, totalSeconds % 60L)
+    val seconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format("%02d:%02d", seconds / 60L, seconds % 60L)
 }
