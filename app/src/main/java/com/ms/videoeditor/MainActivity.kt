@@ -38,6 +38,9 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 
 private val Black = Color(0xFF050807)
 private val Panel = Color(0xFF111816)
@@ -320,6 +323,7 @@ private fun EditorScreen(
     var overlayText by remember(uri) { mutableStateOf("") }
     var speed by remember(uri) { mutableFloatStateOf(1f) }
     var playing by remember(uri) { mutableStateOf(true) }
+    var playheadMs by remember(uri) { mutableLongStateOf(0L) }
     val player = remember(uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(uri))
@@ -328,11 +332,17 @@ private fun EditorScreen(
         }
     }
     DisposableEffect(player) { onDispose { player.release() } }
+    LaunchedEffect(player) {
+        while (true) {
+            playheadMs = player.currentPosition.coerceIn(0L, durationMs.coerceAtLeast(0L))
+            delay(40)
+        }
+    }
     val splitAtPlayhead: () -> Unit = {
-        val position = player.currentPosition
-        val index = selectedClipIndex.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+        val position = playheadMs.coerceIn(0L, durationMs)
+        val index = timelineClips.indexOfFirst { position > it.startMs + 250L && position < it.endMs - 250L }
         val clip = timelineClips.getOrNull(index)
-        if (clip == null || position <= clip.startMs + 250L || position >= clip.endMs - 250L) {
+        if (clip == null) {
             Toast.makeText(context, "Move the playhead inside the selected clip, then Split.", Toast.LENGTH_SHORT).show()
         } else {
             val updated = timelineClips.toMutableList()
@@ -342,6 +352,7 @@ private fun EditorScreen(
             timelineClips = updated
             selectedClipIndex = index + 1
             player.seekTo(position)
+            playheadMs = position
             playing = false
             clipSelected = true
             editTrayOpen = true
@@ -411,8 +422,21 @@ private fun EditorScreen(
                     Icon(Icons.Default.Edit, contentDescription = "Edit cover", tint = Green, modifier = Modifier.size(10.dp))
                 }
             }
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            BoxWithConstraints(
+                Modifier.weight(1f).fillMaxHeight()
+                    .pointerInput(durationMs, timelineClips) {
+                        detectTapGestures { tap ->
+                            val position = (durationMs * (tap.x / size.width).coerceIn(0f, 1f)).toLong()
+                            playheadMs = position
+                            player.seekTo(position)
+                            playing = false
+                            selectedClipIndex = timelineClips.indexOfFirst { position >= it.startMs && position < it.endMs }.coerceAtLeast(0)
+                        }
+                    }
+            ) {
+                val timelineWidth = maxWidth
+                Box(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     timelineClips.forEachIndexed { index, segment ->
                         val segmentFrames = timelineFrames.filterIndexed { frameIndex, _ ->
                             val frameTime = if (timelineFrames.size <= 1) 0L else durationMs * frameIndex / (timelineFrames.size - 1)
@@ -443,6 +467,29 @@ private fun EditorScreen(
                                     modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .55f), RoundedCornerShape(3.dp)))
                             }
                         }
+                    }
+                    }
+                    val playheadFraction = if (durationMs > 0L) (playheadMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    Box(
+                        Modifier.align(Alignment.TopStart)
+                            .offset(x = (timelineWidth * playheadFraction) - 1.dp)
+                            .width(2.dp).fillMaxHeight()
+                            .background(Color.White)
+                    )
+                    Box(
+                        Modifier.align(Alignment.TopStart)
+                            .offset(x = (timelineWidth * playheadFraction) - 5.dp)
+                            .size(width = 10.dp, height = 7.dp)
+                            .background(Emerald, RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp))
+                    )
+                    timelineClips.drop(1).forEach { cut ->
+                        val cutFraction = if (durationMs > 0L) cut.startMs.toFloat() / durationMs.toFloat() else 0f
+                        Box(
+                            Modifier.align(Alignment.TopStart)
+                                .offset(x = (timelineWidth * cutFraction) - 3.dp, y = 2.dp)
+                                .size(6.dp)
+                                .background(Green, RoundedCornerShape(1.dp))
+                        )
                     }
                 }
                 IconButton(onClick = onAddMedia, modifier = Modifier.align(Alignment.CenterEnd).size(26.dp).background(Color.White, RoundedCornerShape(7.dp))) {
