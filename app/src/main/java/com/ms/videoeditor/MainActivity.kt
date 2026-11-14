@@ -461,7 +461,7 @@ private fun EditorScreen(
                         "Enhance voice" -> Icons.Default.Mic
                         "Freeze" -> Icons.Default.Pause
                         "Reverse" -> Icons.Default.Replay
-                        "Mask" -> Icons.Default.Mask
+                        "Mask" -> Icons.Default.VisibilityOff
                         "Unlink" -> Icons.Default.LinkOff
                         else -> Icons.Default.Tune
                     }
