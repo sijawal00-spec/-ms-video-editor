@@ -428,16 +428,41 @@ private fun EditorScreen(
                     Text("Back", color = Color.White, fontSize = 9.sp)
                 }
                 editTools.forEach { tool ->
+                    // Match the individual pictograms shown above each tool name in the user's PDF.
                     val toolIcon = when (tool) {
                         "Split" -> Icons.Default.ContentCut
-                        "Animations", "Effects", "AI video", "AI remix" -> Icons.Default.AutoAwesome
-                        "Speed", "Opacity", "Adjust" -> Icons.Default.Tune
-                        "Delete", "Remove BG", "AI remove" -> Icons.Default.Delete
-                        "Crop", "Transform", "Auto reframe" -> Icons.Default.Crop
+                        "Animations" -> Icons.Default.Movie
+                        "Effects" -> Icons.Default.AutoAwesome
+                        "Speed" -> Icons.Default.Speed
+                        "Delete" -> Icons.Default.Delete
+                        "AI video" -> Icons.Default.VideoLibrary
+                        "Crop" -> Icons.Default.Crop
+                        "Duplicate" -> Icons.Default.ContentCopy
+                        "Replace" -> Icons.Default.SwapHoriz
+                        "Overlay" -> Icons.Default.Layers
+                        "Adjust" -> Icons.Default.Tune
                         "Filters" -> Icons.Default.FilterVintage
-                        "Overlay", "Duplicate" -> Icons.Default.Layers
-                        "Isolate voice", "Enhance voice" -> Icons.Default.MusicNote
-                        "Freeze", "Reverse" -> Icons.Default.PlayArrow
+                        "Retouch" -> Icons.Default.FaceRetouchingNatural
+                        "Video quality" -> Icons.Default.HighQuality
+                        "Remove BG" -> Icons.Default.PersonRemove
+                        "AI remove" -> Icons.Default.AutoFixHigh
+                        "AI expand" -> Icons.Default.OpenInFull
+                        "AI remix" -> Icons.Default.AutoAwesome
+                        "AI extend" -> Icons.Default.AddPhotoAlternate
+                        "Relight" -> Icons.Default.LightMode
+                        "Opacity" -> Icons.Default.Opacity
+                        "Motion blur" -> Icons.Default.BlurOn
+                        "Lip sync" -> Icons.Default.RecordVoiceOver
+                        "Transform" -> Icons.Default.Transform
+                        "Auto reframe" -> Icons.Default.CropRotate
+                        "Stabilize" -> Icons.Default.Videocam
+                        "Camera tracking" -> Icons.Default.CenterFocusStrong
+                        "Isolate voice" -> Icons.Default.GraphicEq
+                        "Enhance voice" -> Icons.Default.Mic
+                        "Freeze" -> Icons.Default.Pause
+                        "Reverse" -> Icons.Default.Replay
+                        "Mask" -> Icons.Default.Mask
+                        "Unlink" -> Icons.Default.LinkOff
                         else -> Icons.Default.Tune
                     }
                     Column(
