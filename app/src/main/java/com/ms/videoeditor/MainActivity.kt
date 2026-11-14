@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -126,21 +127,28 @@ private fun MSVideoEditorApp() {
             prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
         }
     }
-    val multiVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+    val multiVideoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
+    ) { uris ->
         if (uris.isNotEmpty()) {
+            val creatingProject = videoUri == null
             uris.forEach { selected ->
                 try { context.contentResolver.takePersistableUriPermission(selected, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             }
             val merged: List<Uri> = (videoUris + uris).distinct()
             videoUris = merged
             if (videoUri == null) videoUri = merged.firstOrNull()
-            // Persist the complete ordered clip list so returning from the picker cannot send the user Home.
+            // One gallery selection can add many full-length clips to the same project.
             val activeUri: Uri = videoUri ?: merged.first()
             val serializedUris: String = merged.joinToString(separator = "\n") { item: Uri -> item.toString() }
             prefs.edit().putString("active_video_uri", activeUri.toString())
                 .putString("active_video_uris", serializedUris)
                 .putString("project_clips:${activeUri}", serializedUris).apply()
-            // Adding clips updates the open project only; it must not create extra Home projects.
+            // Only the first gallery import creates a Home project. Later imports append clips.
+            if (creatingProject) {
+                recentProjects = (listOf(activeUri) + recentProjects.filter { it != activeUri }).take(30)
+                prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
+            }
         }
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -152,7 +160,7 @@ private fun MSVideoEditorApp() {
     }
     fun startProject(tool: String) {
         activeTool = tool
-        videoPicker.launch(arrayOf("video/*"))
+        multiVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
     }
     fun openSavedProject(projectUri: Uri) {
         val savedClips = prefs.getString("project_clips:${projectUri}", null)
@@ -457,6 +465,19 @@ private fun EditorScreen(
     }
     LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
     LaunchedEffect(playing, player) { player.playWhenReady = playing }
+    // Keep the active playhead visible: during playback the timeline content slides
+    // underneath the centered playhead, matching the reference editor workflow.
+    val timelineViewportWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 116.dp).toPx()
+    }
+    LaunchedEffect(playing, playheadMs, durationMs) {
+        if (playing && durationMs > 0L) {
+            val playheadPx = playheadMs.toFloat() / durationMs.toFloat() * timelineContentWidthPx
+            val targetScroll = (playheadPx - timelineViewportWidthPx / 2f)
+                .toInt().coerceIn(0, timelineScrollState.maxValue)
+            timelineScrollState.scrollTo(targetScroll)
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
