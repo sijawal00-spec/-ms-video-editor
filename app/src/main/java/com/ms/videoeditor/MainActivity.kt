@@ -397,6 +397,50 @@ private fun EditorScreen(
             IconButton(onClick = { player.seekTo((player.currentPosition - 1000L).coerceAtLeast(0L)) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
             IconButton(onClick = { player.seekTo((player.currentPosition + 1000L).coerceAtMost(durationMs)) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
+        Row(Modifier.fillMaxWidth().height(28.dp).padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text("/", color = Muted, fontSize = 9.sp)
+            Text(formatTime(durationMs), color = Muted, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                val rulerWidth = maxWidth
+                val stepMs = when {
+                    durationMs <= 20_000L -> 1_000L
+                    durationMs <= 60_000L -> 5_000L
+                    durationMs <= 180_000L -> 10_000L
+                    durationMs <= 600_000L -> 30_000L
+                    else -> 60_000L
+                }
+                val tickCount = (durationMs / stepMs).toInt().coerceAtMost(120)
+                Box(Modifier.fillMaxSize()) {
+                    for (tick in 0..tickCount) {
+                        val timeMs = tick * stepMs
+                        val fraction = if (durationMs > 0L) timeMs.toFloat() / durationMs.toFloat() else 0f
+                        Box(
+                            Modifier.align(Alignment.TopStart)
+                                .offset(x = rulerWidth * fraction)
+                                .width(1.dp).height(if (tick % 2 == 0) 9.dp else 5.dp)
+                                .background(Muted.copy(alpha = .8f))
+                        )
+                        if (tick % 2 == 0) {
+                            Text(
+                                formatTime(timeMs),
+                                color = Muted,
+                                fontSize = 8.sp,
+                                modifier = Modifier.align(Alignment.BottomStart)
+                                    .offset(x = (rulerWidth * fraction) - 12.dp)
+                            )
+                        }
+                    }
+                    val currentFraction = if (durationMs > 0L) (playheadMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    Box(
+                        Modifier.align(Alignment.TopStart)
+                            .offset(x = rulerWidth * currentFraction)
+                            .width(2.dp).height(10.dp)
+                            .background(Green)
+                    )
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(8.dp)).padding(2.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
