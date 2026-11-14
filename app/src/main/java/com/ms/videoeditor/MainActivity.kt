@@ -277,6 +277,7 @@ private fun EditorScreen(
     onExport: (Long, Long) -> Unit, onSplit: (Long, Long, Long) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var editTrayOpen by remember { mutableStateOf(false) }
     val durationMs = remember(uri) {
         try {
             val retriever = android.media.MediaMetadataRetriever()
@@ -409,7 +410,7 @@ private fun EditorScreen(
                 Column(
                     Modifier.width(66.dp).height(68.dp)
                         .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(10.dp))
-                        .clickable { onTool(tool) }.padding(horizontal = 3.dp, vertical = 6.dp),
+                         .clickable { editTrayOpen = (tool == "Edit"); onTool(tool) }.padding(horizontal = 3.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -429,7 +430,7 @@ private fun EditorScreen(
             "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
             "Freeze", "Reverse", "Mask", "Unlink"
         )
-        if (activeTool == "Edit" || editTools.contains(activeTool)) {
+        if (editTrayOpen || activeTool == "Edit" || editTools.contains(activeTool)) {
             Column(
                 Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(vertical = 8.dp)
             ) {
