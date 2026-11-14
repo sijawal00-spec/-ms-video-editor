@@ -93,8 +93,13 @@ private fun MSVideoEditorApp() {
         mutableStateOf(prefs.getString("active_video_uri", null)?.let { runCatching { Uri.parse(it) }.getOrNull() })
     }
     var videoUris by remember {
-        mutableStateOf(prefs.getString("active_video_uris", null)?.split("\n")?.filter { it.isNotBlank() }
-            ?.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() } ?: emptyList())
+        mutableStateOf<List<Uri>>(
+            prefs.getString("active_video_uris", null)
+                ?.split("\n")
+                ?.filter { value -> value.isNotBlank() }
+                ?.mapNotNull { value -> runCatching { Uri.parse(value) }.getOrNull() }
+                ?: emptyList<Uri>()
+        )
     }
     var audioUri by remember {
         mutableStateOf(prefs.getString("active_audio_uri", null)?.let { runCatching { Uri.parse(it) }.getOrNull() })
@@ -103,7 +108,11 @@ private fun MSVideoEditorApp() {
     var page by remember { mutableStateOf("Home") }
     var dialog by remember { mutableStateOf<String?>(null) }
     var recentProjects by remember {
-        mutableStateOf(prefs.getStringSet("recent_projects", emptySet())!!.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() })
+        mutableStateOf<List<Uri>>(
+            prefs.getStringSet("recent_projects", emptySet())
+                .orEmpty()
+                .mapNotNull { value -> runCatching { Uri.parse(value) }.getOrNull() }
+        )
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -121,13 +130,15 @@ private fun MSVideoEditorApp() {
             uris.forEach { selected ->
                 try { context.contentResolver.takePersistableUriPermission(selected, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             }
-            val merged = (videoUris + uris).distinct()
+            val merged: List<Uri> = (videoUris + uris).distinct()
             videoUris = merged
             if (videoUri == null) videoUri = merged.firstOrNull()
             // Persist the complete ordered clip list so returning from the picker cannot send the user Home.
-            prefs.edit().putString("active_video_uri", (videoUri ?: merged.first()).toString())
-                .putString("active_video_uris", merged.joinToString("\n") { it.toString() }).apply()
-            recentProjects = (merged + recentProjects.filter { it !in merged }).take(30)
+            val activeUri: Uri = videoUri ?: merged.first()
+            val serializedUris: String = merged.joinToString(separator = "\n") { item: Uri -> item.toString() }
+            prefs.edit().putString("active_video_uri", activeUri.toString())
+                .putString("active_video_uris", serializedUris).apply()
+            recentProjects = (merged + recentProjects.filter { existing: Uri -> existing !in merged }).take(30)
             prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
         }
     }
