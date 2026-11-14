@@ -366,21 +366,21 @@ private fun EditorScreen(
             Spacer(Modifier.weight(1f))
             Text(formatTime(durationMs), color = Muted, fontSize = 10.sp)
         }
-        Row(Modifier.fillMaxWidth().height(86.dp).background(Panel, RoundedCornerShape(8.dp)).padding(5.dp),
+        Row(Modifier.fillMaxWidth().height(64.dp).background(Panel, RoundedCornerShape(8.dp)).padding(3.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
                 clipMuted = !clipMuted
                 player.volume = if (clipMuted) 0f else 1f
             }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(if (clipMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, contentDescription = "Mute clip",
-                    tint = if (clipMuted) Green else Color.White, modifier = Modifier.size(21.dp))
+                    tint = if (clipMuted) Green else Color.White, modifier = Modifier.size(18.dp))
                 Text(if (clipMuted) "Muted" else "Mute\nclip", color = Color.White, fontSize = 8.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             Column(Modifier.width(48.dp).fillMaxHeight().clickable { onTool("Cover") },
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 if (timelineFrames.isNotEmpty()) {
                     Image(bitmap = timelineFrames.first().asImageBitmap(), contentDescription = "Video cover",
-                        modifier = Modifier.size(38.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
                 } else {
                     Box(Modifier.size(38.dp).background(Panel2, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Image, contentDescription = "Cover", tint = Color.White)
