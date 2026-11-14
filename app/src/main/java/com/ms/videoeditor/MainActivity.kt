@@ -380,6 +380,11 @@ private fun EditorScreen(
         }
     }
     val durationMs = sourceDurations.sum()
+    // Give every second of footage real horizontal space instead of squeezing the
+    // complete project into the phone width. All timeline tracks share one scroll.
+    val timelineContentWidthDp = (durationMs / 1000f * 80f).coerceAtLeast(320f)
+    val timelineContentWidthPx = timelineContentWidthDp * androidx.compose.ui.platform.LocalDensity.current.density
+    val timelineScrollState = rememberScrollState()
     var timelineClips by remember(videoUris, sourceDurations) {
         var cursor = 0L
         mutableStateOf(sourceDurations.mapNotNull { itemDuration ->
@@ -510,8 +515,8 @@ private fun EditorScreen(
             Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text("/", color = Muted, fontSize = 9.sp)
             Text(formatTime(durationMs), color = Muted, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-                val rulerWidth = maxWidth
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
+                val rulerWidth = timelineContentWidthDp.dp
                 val stepMs = when {
                     durationMs <= 20_000L -> 1_000L
                     durationMs <= 60_000L -> 5_000L
@@ -520,7 +525,7 @@ private fun EditorScreen(
                     else -> 60_000L
                 }
                 val tickCount = (durationMs / stepMs).toInt().coerceAtMost(120)
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.width(rulerWidth).fillMaxHeight()) {
                     for (tick in 0..tickCount) {
                         val timeMs = tick * stepMs
                         val fraction = if (durationMs > 0L) timeMs.toFloat() / durationMs.toFloat() else 0f
@@ -576,10 +581,11 @@ private fun EditorScreen(
                 }
             }
             BoxWithConstraints(
-                Modifier.weight(1f).fillMaxHeight()
-                    .pointerInput(durationMs, timelineClips) {
+                Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)
+                    .pointerInput(durationMs, timelineClips, timelineScrollState.value) {
                         detectTapGestures { tap ->
-                            val position = (durationMs * (tap.x / size.width).coerceIn(0f, 1f)).toLong()
+                            val contentX = (tap.x + timelineScrollState.value).coerceIn(0f, timelineContentWidthPx)
+                            val position = if (timelineContentWidthPx > 0f) (durationMs * (contentX / timelineContentWidthPx)).toLong() else 0L
                             playheadMs = position
                             seekGlobalPosition(player, position, sourceDurations)
                             playing = false
@@ -587,8 +593,8 @@ private fun EditorScreen(
                         }
                     }
             ) {
-                val timelineWidth = maxWidth
-                Box(Modifier.fillMaxSize()) {
+                val timelineWidth = timelineContentWidthDp.dp
+                Box(Modifier.width(timelineWidth).fillMaxHeight()) {
                     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     timelineClips.forEachIndexed { index, segment ->
                         val segmentFrames = timelineFrames.filterIndexed { frameIndex, _ ->
@@ -665,17 +671,21 @@ private fun EditorScreen(
             Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
-                    color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
+            Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
+                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
+                        color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
+                }
             }
         }
         Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onTool("Text") }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                Text(if (overlayText.isBlank()) "+ Add text" else overlayText, color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
+            Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
+                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onTool("Text") }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(if (overlayText.isBlank()) "+ Add text" else overlayText, color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
+                }
             }
         }
         when (activeTool) {
