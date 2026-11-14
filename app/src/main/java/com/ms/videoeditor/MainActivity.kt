@@ -305,6 +305,8 @@ private fun EditorScreen(
         mutableStateOf(if (durationMs > 0L) listOf(TimelineClip(0L, durationMs)) else emptyList())
     }
     var selectedClipIndex by remember(uri) { mutableIntStateOf(0) }
+    var selectedTransitionCutMs by remember(uri) { mutableLongStateOf(-1L) }
+    var transitionSelections by remember(uri) { mutableStateOf(mapOf<Long, String>()) }
     val timelineFrames = remember(uri, durationMs) {
         val frames = mutableListOf<android.graphics.Bitmap>()
         try {
@@ -528,12 +530,22 @@ private fun EditorScreen(
                     )
                     timelineClips.drop(1).forEach { cut ->
                         val cutFraction = if (durationMs > 0L) cut.startMs.toFloat() / durationMs.toFloat() else 0f
+                        val transitionName = transitionSelections[cut.startMs]
                         Box(
-                            Modifier.align(Alignment.TopStart)
-                                .offset(x = (timelineWidth * cutFraction) - 3.dp, y = 2.dp)
-                                .size(6.dp)
-                                .background(Green, RoundedCornerShape(1.dp))
-                        )
+                            Modifier.align(Alignment.CenterStart)
+                                .offset(x = (timelineWidth * cutFraction) - 11.dp)
+                                .size(width = 22.dp, height = 24.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (transitionName == null) Panel2 else Emerald)
+                                .border(1.dp, if (transitionName == null) Green else Color.White, RoundedCornerShape(6.dp))
+                                .clickable {
+                                    selectedTransitionCutMs = cut.startMs
+                                    onTool("Transition")
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (transitionName == null) "+" else "✓", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 IconButton(onClick = onAddMedia, modifier = Modifier.align(Alignment.CenterEnd).size(26.dp).background(Color.White, RoundedCornerShape(7.dp))) {
@@ -581,6 +593,32 @@ private fun EditorScreen(
                     Spacer(Modifier.width(6.dp))
                     Text("Split at playhead", color = Black)
                 }
+            }
+            "Transition" -> {
+                Text("Add transition between the two video clips", color = Color.White, fontSize = 12.sp)
+                Text("Cut point: ${formatTime(selectedTransitionCutMs.coerceAtLeast(0L))}", color = Green, fontSize = 10.sp)
+                val transitionOptions = listOf("None", "Fade", "Dissolve", "Zoom", "Slide", "Wipe", "Spin")
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    transitionOptions.forEach { option ->
+                        val selected = transitionSelections[selectedTransitionCutMs] == option || (option == "None" && transitionSelections[selectedTransitionCutMs] == null)
+                        Column(
+                            Modifier.width(76.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) Emerald.copy(alpha = .22f) else Panel2)
+                                .border(1.dp, if (selected) Green else Panel2, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    transitionSelections = if (option == "None") transitionSelections - selectedTransitionCutMs
+                                        else transitionSelections + (selectedTransitionCutMs to option)
+                                }.padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.size(36.dp).background(if (selected) Emerald else Panel, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                                Text(if (option == "None") "×" else "✦", color = Color.White, fontSize = 19.sp)
+                            }
+                            Text(option, color = if (selected) Green else Color.White, fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
+                }
+                Text("Tap the + box between clips to add or change a transition.", color = Muted, fontSize = 10.sp)
             }
             "Speed" -> {
                 Slider(value = speed, onValueChange = { speed = it }, valueRange = .25f..2f,
