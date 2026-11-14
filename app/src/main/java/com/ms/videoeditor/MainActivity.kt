@@ -75,7 +75,11 @@ private fun MSVideoEditorApp() {
                     onTool = { activeTool = it; dialog = it },
                     onBack = { videoUri = null; page = "Home" },
                     onAddMedia = { picker.launch(arrayOf("video/*")) },
-                    onExport = { startMs, endMs ->\n                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { success, message ->\n                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()\n                        }\n                    }
+                    onExport = { startMs, endMs ->
+                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { success, message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
                 )
                 page == "Home" -> HomeScreen(
                     projects = recentProjects,
@@ -267,13 +271,27 @@ private fun EditorScreen(
     onTool: (String) -> Unit,
     onBack: () -> Unit,
     onAddMedia: () -> Unit,
-    onExport: () -> Unit
+    onExport: (Long, Long) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val durationMs = remember(uri) {
+        try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, uri)
+            val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            retriever.release()
+            duration
+        } catch (_: Exception) { 0L }
+    }
+    var trimRange by remember(uri, durationMs) { mutableStateOf(0f..durationMs.toFloat()) }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
             Text("New Project", color = Color.White, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) { Text("Export", color = Green) }
+            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) {
+                Text("Export", color = Green)
+            }
         }
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
             AndroidView(factory = { ctx -> VideoView(ctx).apply {
@@ -293,10 +311,25 @@ private fun EditorScreen(
             Spacer(Modifier.weight(1f))
             Icon(Icons.Default.PlayCircle, contentDescription = "Preview", tint = Green, modifier = Modifier.size(36.dp))
             Spacer(Modifier.weight(1f))
-            Text("--:--", color = Muted, fontSize = 12.sp)
+            Text(formatTime(durationMs), color = Muted, fontSize = 12.sp)
         }
         Spacer(Modifier.height(10.dp))
-        Text("TIMELINE", color = Gold, fontSize = 11.sp)
+        Text("TIMELINE  •  TRIM", color = Gold, fontSize = 11.sp)
+        if (durationMs > 0L) {
+            RangeSlider(
+                value = trimRange,
+                onValueChange = { trimRange = it },
+                valueRange = 0f..durationMs.toFloat(),
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald)
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(formatTime(trimRange.start.toLong()), color = Green, fontSize = 11.sp)
+                Text(formatTime(trimRange.endInclusive.toLong()), color = Muted, fontSize = 11.sp)
+            }
+        } else {
+            Text("Video duration could not be read. Try another video.", color = Muted, fontSize = 11.sp)
+        }
         Spacer(Modifier.height(7.dp))
         Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("V1", color = Green, fontSize = 11.sp)
@@ -304,7 +337,7 @@ private fun EditorScreen(
             Box(Modifier.weight(1f).height(50.dp).background(Color(0xFF24533F), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                 Text("VIDEO CLIP", color = Color.White, fontSize = 11.sp)
             }
-            IconButton(onClick = onAddMedia) { Icon(Icons.Default.Add, contentDescription = "Add media", tint = Green) }
+            IconButton(onClick = onAddMedia) { Icon(Icons.Default.Add, contentDescription = "Add video", tint = Green) }
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -314,7 +347,11 @@ private fun EditorScreen(
             }
         }
         Text("$activeTool selected", color = Gold, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-        Text("Choose a tool to open its controls. Processing and final export are being implemented.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+        Text("Adjust the trim handles to choose the part to keep, then tap Export.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
     }
 }
-\n\nprivate fun formatTime(milliseconds: Long): String {\n    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)\n    return String.format("%02d:%02d", totalSeconds / 60L, totalSeconds % 60L)\n}\n
+
+private fun formatTime(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    return String.format("%02d:%02d", totalSeconds / 60L, totalSeconds % 60L)
+}
