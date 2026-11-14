@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -13,6 +14,7 @@ import androidx.media3.transformer.Transformer
 import java.io.File
 import java.io.FileInputStream
 
+@OptIn(UnstableApi::class)
 fun exportTrimmedVideo(
     context: Context,
     source: Uri,
