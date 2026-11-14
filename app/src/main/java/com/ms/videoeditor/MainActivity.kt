@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +54,25 @@ private val Muted = Color(0xFF9AA7A1)
 
 private data class TimelineClip(val startMs: Long, val endMs: Long) {
     val durationMs: Long get() = (endMs - startMs).coerceAtLeast(1L)
+}
+
+private fun seekGlobalPosition(player: ExoPlayer, positionMs: Long, durations: List<Long>) {
+    var remaining = positionMs.coerceAtLeast(0L)
+    for (index in durations.indices) {
+        val itemDuration = durations[index].coerceAtLeast(1L)
+        if (remaining < itemDuration || index == durations.lastIndex) {
+            player.seekTo(index, remaining.coerceIn(0L, itemDuration))
+            return
+        }
+        remaining -= itemDuration
+    }
+    if (durations.isEmpty()) player.seekTo(positionMs.coerceAtLeast(0L))
+}
+
+private fun globalPlaybackPosition(player: ExoPlayer, durations: List<Long>): Long {
+    val currentIndex = player.currentMediaItemIndex
+    if (currentIndex < 0) return 0L
+    return durations.take(currentIndex).sum() + player.currentPosition
 }
 
 class MainActivity : ComponentActivity() {
@@ -320,8 +340,15 @@ private fun EditorScreen(
         }
     }
     val durationMs = sourceDurations.sum()
-    var timelineClips by remember(uri, durationMs) {
-        mutableStateOf(if (durationMs > 0L) listOf(TimelineClip(0L, durationMs)) else emptyList())
+    var timelineClips by remember(videoUris, sourceDurations) {
+        var cursor = 0L
+        mutableStateOf(sourceDurations.mapNotNull { itemDuration ->
+            if (itemDuration <= 0L) null else {
+                val clip = TimelineClip(cursor, cursor + itemDuration)
+                cursor += itemDuration
+                clip
+            }
+        })
     }
     var selectedClipIndex by remember(uri) { mutableIntStateOf(0) }
     var selectedTransitionCutMs by remember(uri) { mutableLongStateOf(-1L) }
@@ -358,7 +385,7 @@ private fun EditorScreen(
     DisposableEffect(player) { onDispose { player.release() } }
     LaunchedEffect(player) {
         while (true) {
-            playheadMs = player.currentPosition.coerceIn(0L, durationMs.coerceAtLeast(0L))
+            playheadMs = globalPlaybackPosition(player, sourceDurations).coerceIn(0L, durationMs.coerceAtLeast(0L))
             delay(40)
         }
     }
@@ -375,7 +402,7 @@ private fun EditorScreen(
             updated.add(index, TimelineClip(clip.startMs, position))
             timelineClips = updated
             selectedClipIndex = index + 1
-            player.seekTo(position)
+            seekGlobalPosition(player, position, sourceDurations)
             playheadMs = position
             playing = false
             clipSelected = true
@@ -396,13 +423,31 @@ private fun EditorScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Emerald),
                 contentPadding = PaddingValues(horizontal = 15.dp, vertical = 7.dp)) { Text("Export", color = Black, fontSize = 13.sp) }
         }
+        val previewTransition = transitionSelections.entries.firstOrNull {
+            kotlin.math.abs(playheadMs - it.key) <= 500L && (it.value == "Zoom" || it.value == "Slide")
+        }
+        val transitionProgress = previewTransition?.let {
+            ((playheadMs - it.key + 500L).toFloat() / 1000f).coerceIn(0f, 1f)
+        } ?: 0f
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
             AndroidView(factory = { ctx -> PlayerView(ctx).apply {
                 this.player = player
                 useController = false
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
-            } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
+            } }, update = { it.player = player }, modifier = Modifier.fillMaxSize().graphicsLayer {
+                val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
+                when (previewTransition?.value) {
+                    "Zoom" -> {
+                        scaleX = 1f + pulse * .22f
+                        scaleY = 1f + pulse * .22f
+                    }
+                    "Slide" -> {
+                        translationX = (if (transitionProgress < .5f) 1f else -1f) *
+                            (1f - pulse) * size.width * .18f
+                    }
+                }
+            })
             if (overlayText.isNotBlank()) {
                 Text(overlayText, color = Color.White, fontSize = 24.sp,
                     modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
@@ -418,8 +463,8 @@ private fun EditorScreen(
                 Icon(Icons.Default.ContentCut, contentDescription = "Split at playhead", tint = Color.White)
             }
             IconButton(onClick = { onTool("Keyframe") }) { Icon(Icons.Default.Diamond, contentDescription = "Keyframe", tint = Color.White) }
-            IconButton(onClick = { player.seekTo((player.currentPosition - 1000L).coerceAtLeast(0L)) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
-            IconButton(onClick = { player.seekTo((player.currentPosition + 1000L).coerceAtMost(durationMs)) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
+            IconButton(onClick = { seekGlobalPosition(player, (playheadMs - 1000L).coerceAtLeast(0L), sourceDurations) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
+            IconButton(onClick = { seekGlobalPosition(player, (playheadMs + 1000L).coerceAtMost(durationMs), sourceDurations) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
         Row(Modifier.fillMaxWidth().height(28.dp).padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -496,7 +541,7 @@ private fun EditorScreen(
                         detectTapGestures { tap ->
                             val position = (durationMs * (tap.x / size.width).coerceIn(0f, 1f)).toLong()
                             playheadMs = position
-                            player.seekTo(position)
+                            seekGlobalPosition(player, position, sourceDurations)
                             playing = false
                             selectedClipIndex = timelineClips.indexOfFirst { position >= it.startMs && position < it.endMs }.coerceAtLeast(0)
                         }
@@ -517,7 +562,8 @@ private fun EditorScreen(
                                 .clickable {
                                     selectedClipIndex = index
                                     clipSelected = true
-                                    player.seekTo(segment.startMs)
+                                    seekGlobalPosition(player, segment.startMs, sourceDurations)
+                                    playheadMs = segment.startMs
                                     playing = false
                                     editTrayOpen = true
                                     onTool("Edit")
