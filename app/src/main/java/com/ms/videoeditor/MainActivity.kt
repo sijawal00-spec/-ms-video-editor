@@ -75,7 +75,7 @@ private fun MSVideoEditorApp() {
                     onTool = { activeTool = it; dialog = it },
                     onBack = { videoUri = null; page = "Home" },
                     onAddMedia = { picker.launch(arrayOf("video/*")) },
-                    onExport = { dialog = "Export" }
+                    onExport = { startMs, endMs ->\n                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { success, message ->\n                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()\n                        }\n                    }
                 )
                 page == "Home" -> HomeScreen(
                     projects = recentProjects,
@@ -273,7 +273,7 @@ private fun EditorScreen(
         Row(Modifier.fillMaxWidth().height(54.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
             Text("New Project", color = Color.White, modifier = Modifier.weight(1f))
-            TextButton(onClick = onExport) { Text("Export", color = Green) }
+            TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) { Text("Export", color = Green) }
         }
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
             AndroidView(factory = { ctx -> VideoView(ctx).apply {
@@ -317,3 +317,4 @@ private fun EditorScreen(
         Text("Choose a tool to open its controls. Processing and final export are being implemented.", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
     }
 }
+\n\nprivate fun formatTime(milliseconds: Long): String {\n    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)\n    return String.format("%02d:%02d", totalSeconds / 60L, totalSeconds % 60L)\n}\n
