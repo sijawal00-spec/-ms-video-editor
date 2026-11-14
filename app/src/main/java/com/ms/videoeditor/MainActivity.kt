@@ -359,14 +359,7 @@ private fun EditorScreen(
             IconButton(onClick = { player.seekTo((player.currentPosition - 1000L).coerceAtLeast(0L)) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
             IconButton(onClick = { player.seekTo((player.currentPosition + 1000L).coerceAtMost(durationMs)) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(formatTime(player.currentPosition), color = Color.White, fontSize = 10.sp)
-            Spacer(Modifier.weight(1f))
-            Text("00:00      •      00:02      •      00:04      •      00:06", color = Muted, fontSize = 10.sp)
-            Spacer(Modifier.weight(1f))
-            Text(formatTime(durationMs), color = Muted, fontSize = 10.sp)
-        }
-        Row(Modifier.fillMaxWidth().height(64.dp).background(Panel, RoundedCornerShape(8.dp)).padding(3.dp),
+        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(8.dp)).padding(2.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
                 clipMuted = !clipMuted
@@ -380,9 +373,9 @@ private fun EditorScreen(
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 if (timelineFrames.isNotEmpty()) {
                     Image(bitmap = timelineFrames.first().asImageBitmap(), contentDescription = "Video cover",
-                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                        modifier = Modifier.size(26.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Crop)
                 } else {
-                    Box(Modifier.size(38.dp).background(Panel2, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(26.dp).background(Panel2, RoundedCornerShape(5.dp)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Image, contentDescription = "Cover", tint = Color.White)
                     }
                 }
@@ -407,13 +400,12 @@ private fun EditorScreen(
                         }
                     }
                 }
-                Box(Modifier.align(Alignment.TopCenter).width(2.dp).fillMaxHeight().background(Color.White))
-                IconButton(onClick = onAddMedia, modifier = Modifier.align(Alignment.CenterEnd).size(32.dp).background(Color.White, RoundedCornerShape(8.dp))) {
+                IconButton(onClick = onAddMedia, modifier = Modifier.align(Alignment.CenterEnd).size(26.dp).background(Color.White, RoundedCornerShape(7.dp))) {
                     Icon(Icons.Default.Add, contentDescription = "Add video clip", tint = Black)
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(36.dp).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(30.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
             Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                 Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
