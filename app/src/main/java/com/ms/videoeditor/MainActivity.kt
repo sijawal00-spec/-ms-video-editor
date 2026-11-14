@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
 private fun MSVideoEditorApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var videoUri by remember { mutableStateOf<Uri?>(null) }
+    var videoUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var audioUri by remember { mutableStateOf<Uri?>(null) }
     var activeTool by remember { mutableStateOf("Trim") }
     var page by remember { mutableStateOf("Home") }
@@ -80,7 +81,20 @@ private fun MSVideoEditorApp() {
         if (uri != null) {
             try { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             videoUri = uri
+            videoUris = listOf(uri)
             recentProjects = (listOf(uri) + recentProjects.filter { it != uri }).take(30)
+            prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
+        }
+    }
+    val multiVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            uris.forEach { selected ->
+                try { context.contentResolver.takePersistableUriPermission(selected, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            }
+            val merged = (videoUris + uris).distinct()
+            videoUris = merged
+            if (videoUri == null) videoUri = merged.firstOrNull()
+            recentProjects = (merged + recentProjects.filter { it !in merged }).take(30)
             prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
         }
     }
@@ -99,11 +113,12 @@ private fun MSVideoEditorApp() {
             when {
                 videoUri != null -> EditorScreen(
                     uri = videoUri!!,
+                    videoUris = videoUris.ifEmpty { listOf(videoUri!!) },
                     audioUri = audioUri,
                     activeTool = activeTool,
                     onTool = { activeTool = it },
-                    onBack = { videoUri = null; audioUri = null; page = "Home" },
-                    onAddMedia = { videoPicker.launch(arrayOf("video/*")) },
+                    onBack = { videoUri = null; videoUris = emptyList(); audioUri = null; page = "Home" },
+                    onAddMedia = { multiVideoPicker.launch(arrayOf("video/*")) },
                     onPickAudio = { audioPicker.launch(arrayOf("audio/*")) },
                     onExport = { startMs, endMs ->
                         exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
@@ -125,7 +140,7 @@ private fun MSVideoEditorApp() {
                     projects = recentProjects,
                     onNew = { startProject("Trim") },
                     onTool = { startProject(it) },
-                    onProject = { videoUri = it; activeTool = "Trim" },
+                    onProject = { videoUri = it; videoUris = listOf(it); activeTool = "Trim" },
                     onSettings = { dialog = "Settings" },
                     onPremium = { dialog = "MS Premium" },
                     onPage = { page = it }
@@ -134,7 +149,7 @@ private fun MSVideoEditorApp() {
                     page = page, projects = recentProjects,
                     onBack = { page = "Home" },
                     onNew = { startProject("Trim") },
-                    onProject = { videoUri = it },
+                    onProject = { videoUri = it; videoUris = listOf(it) },
                     onInfo = { dialog = it }
                 )
             }
@@ -285,7 +300,7 @@ private fun SimplePage(page: String, projects: List<Uri>, onBack: () -> Unit, on
 
 @Composable
 private fun EditorScreen(
-    uri: Uri, audioUri: Uri?, activeTool: String, onTool: (String) -> Unit,
+    uri: Uri, videoUris: List<Uri>, audioUri: Uri?, activeTool: String, onTool: (String) -> Unit,
     onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit,
     onExport: (Long, Long) -> Unit, onSplit: (Long, Long, Long) -> Unit
 ) {
@@ -293,32 +308,38 @@ private fun EditorScreen(
     var editTrayOpen by remember { mutableStateOf(false) }
     var clipSelected by remember(uri) { mutableStateOf(false) }
     var clipMuted by remember(uri) { mutableStateOf(false) }
-    val durationMs = remember(uri) {
-        try {
-            val retriever = android.media.MediaMetadataRetriever()
-            retriever.setDataSource(context, uri)
-            val d = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            retriever.release()
-            d
-        } catch (_: Exception) { 0L }
+    val sourceDurations = remember(videoUris) {
+        videoUris.map { source ->
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(context, source)
+                val d = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                retriever.release()
+                d
+            } catch (_: Exception) { 0L }
+        }
     }
+    val durationMs = sourceDurations.sum()
     var timelineClips by remember(uri, durationMs) {
         mutableStateOf(if (durationMs > 0L) listOf(TimelineClip(0L, durationMs)) else emptyList())
     }
     var selectedClipIndex by remember(uri) { mutableIntStateOf(0) }
     var selectedTransitionCutMs by remember(uri) { mutableLongStateOf(-1L) }
     var transitionSelections by remember(uri) { mutableStateOf(mapOf<Long, String>()) }
-    val timelineFrames = remember(uri, durationMs) {
+    val timelineFrames = remember(videoUris, sourceDurations) {
         val frames = mutableListOf<android.graphics.Bitmap>()
-        try {
-            val retriever = android.media.MediaMetadataRetriever()
-            retriever.setDataSource(context, uri)
-            for (index in 0 until 7) {
-                val timeUs = if (durationMs > 0L) (durationMs * index / 7) * 1000L else 0L
-                retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { frames.add(it) }
-            }
-            retriever.release()
-        } catch (_: Exception) {}
+        videoUris.forEach { source ->
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(context, source)
+                for (index in 0 until 4) {
+                    val sourceDuration = sourceDurations.getOrNull(videoUris.indexOf(source)) ?: 0L
+                    val timeUs = if (sourceDuration > 0L) (sourceDuration * index / 4) * 1000L else 0L
+                    retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { frames.add(it) }
+                }
+                retriever.release()
+            } catch (_: Exception) {}
+        }
         frames
     }
     var trimRange by remember(uri, durationMs) { mutableStateOf(0f..durationMs.toFloat()) }
@@ -327,9 +348,9 @@ private fun EditorScreen(
     var speed by remember(uri) { mutableFloatStateOf(1f) }
     var playing by remember(uri) { mutableStateOf(true) }
     var playheadMs by remember(uri) { mutableLongStateOf(0L) }
-    val player = remember(uri) {
+    val player = remember(videoUris) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
+            setMediaItems(videoUris.map { MediaItem.fromUri(it) })
             prepare()
             playWhenReady = true
         }
