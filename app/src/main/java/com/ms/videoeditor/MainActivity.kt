@@ -416,7 +416,7 @@ private fun EditorScreen(
         Row(Modifier.fillMaxWidth().height(36.dp).padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.width(48.dp).size(18.dp))
             Box(Modifier.weight(1f).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                Text(if (audioUri == null) "+ Add audio" else "♪ \${audioUri.lastPathSegment ?: "Audio"}",
+                Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
                     color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
             }
         }
