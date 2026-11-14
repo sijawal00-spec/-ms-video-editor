@@ -11,6 +11,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
@@ -536,7 +538,7 @@ private fun EditorScreen(
             Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text("/", color = Muted, fontSize = 9.sp)
             Text(formatTime(durationMs), color = Muted, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                 val rulerWidth = timelineContentWidthDp.dp
                 val stepMs = when {
                     durationMs <= 20_000L -> 1_000L
@@ -546,7 +548,7 @@ private fun EditorScreen(
                     else -> 60_000L
                 }
                 val tickCount = (durationMs / stepMs).toInt().coerceAtMost(120)
-                Box(Modifier.width(rulerWidth).fillMaxHeight()) {
+                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }.width(rulerWidth).fillMaxHeight()) {
                     for (tick in 0..tickCount) {
                         val timeMs = tick * stepMs
                         val fraction = if (durationMs > 0L) timeMs.toFloat() / durationMs.toFloat() else 0f
@@ -576,7 +578,7 @@ private fun EditorScreen(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(8.dp)).padding(2.dp),
+        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(8.dp)).padding(2.dp).horizontalScroll(timelineScrollState),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
                 clipMuted = !clipMuted
@@ -602,7 +604,7 @@ private fun EditorScreen(
                 }
             }
             BoxWithConstraints(
-                Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)
+                Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                     .pointerInput(durationMs, timelineClips, timelineScrollState.value) {
                         detectTapGestures { tap ->
                             val contentX = (tap.x + timelineScrollState.value).coerceIn(0f, timelineContentWidthPx)
@@ -692,8 +694,8 @@ private fun EditorScreen(
             Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
-                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                     Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
                         color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
                 }
