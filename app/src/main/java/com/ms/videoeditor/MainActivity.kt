@@ -186,7 +186,7 @@ private fun MSVideoEditorApp() {
                         videoUri = null; videoUris = emptyList(); audioUri = null; page = "Home"
                         prefs.edit().remove("active_video_uri").remove("active_video_uris").remove("active_audio_uri").apply()
                     },
-                    onAddMedia = { multiVideoPicker.launch(arrayOf("video/*")) },
+                    onAddMedia = { multiVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
                     onPickAudio = { audioPicker.launch(arrayOf("audio/*")) },
                     onExport = { startMs, endMs ->
                         exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
