@@ -47,6 +47,10 @@ private val Emerald = Color(0xFF00D889)
 private val Gold = Color(0xFFFFD84A)
 private val Muted = Color(0xFF9AA7A1)
 
+private data class TimelineClip(val startMs: Long, val endMs: Long) {
+    val durationMs: Long get() = (endMs - startMs).coerceAtLeast(1L)
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -294,6 +298,10 @@ private fun EditorScreen(
             d
         } catch (_: Exception) { 0L }
     }
+    var timelineClips by remember(uri, durationMs) {
+        mutableStateOf(if (durationMs > 0L) listOf(TimelineClip(0L, durationMs)) else emptyList())
+    }
+    var selectedClipIndex by remember(uri) { mutableIntStateOf(0) }
     val timelineFrames = remember(uri, durationMs) {
         val frames = mutableListOf<android.graphics.Bitmap>()
         try {
@@ -320,6 +328,26 @@ private fun EditorScreen(
         }
     }
     DisposableEffect(player) { onDispose { player.release() } }
+    val splitAtPlayhead: () -> Unit = {
+        val position = player.currentPosition
+        val index = selectedClipIndex.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+        val clip = timelineClips.getOrNull(index)
+        if (clip == null || position <= clip.startMs + 250L || position >= clip.endMs - 250L) {
+            Toast.makeText(context, "Move the playhead inside the selected clip, then Split.", Toast.LENGTH_SHORT).show()
+        } else {
+            val updated = timelineClips.toMutableList()
+            updated.removeAt(index)
+            updated.add(index, TimelineClip(position, clip.endMs))
+            updated.add(index, TimelineClip(clip.startMs, position))
+            timelineClips = updated
+            selectedClipIndex = index + 1
+            player.seekTo(position)
+            playing = false
+            clipSelected = true
+            editTrayOpen = true
+            onTool("Edit")
+        }
+    }
     LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
     LaunchedEffect(playing, player) { player.playWhenReady = playing }
 
@@ -351,12 +379,9 @@ private fun EditorScreen(
             IconButton(onClick = { playing = !playing }) {
                 Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause", tint = Green, modifier = Modifier.size(30.dp))
             }
-            IconButton(onClick = {
-                if (durationMs > 1000L) {
-                    val cut = player.currentPosition.coerceIn(1L, durationMs - 1L)
-                    onSplit(0L, cut, durationMs)
-                }
-            }) { Icon(Icons.Default.ContentCut, contentDescription = "Split at playhead", tint = Color.White) }
+            IconButton(onClick = splitAtPlayhead) {
+                Icon(Icons.Default.ContentCut, contentDescription = "Split at playhead", tint = Color.White)
+            }
             IconButton(onClick = { onTool("Keyframe") }) { Icon(Icons.Default.Diamond, contentDescription = "Keyframe", tint = Color.White) }
             IconButton(onClick = { player.seekTo((player.currentPosition - 1000L).coerceAtLeast(0L)) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
             IconButton(onClick = { player.seekTo((player.currentPosition + 1000L).coerceAtMost(durationMs)) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
@@ -387,25 +412,36 @@ private fun EditorScreen(
                 }
             }
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                Row(
-                    Modifier.fillMaxSize()
-                        .clip(RoundedCornerShape(6.dp))
-                        .then(if (clipSelected) Modifier.border(2.dp, Emerald, RoundedCornerShape(6.dp)) else Modifier)
-                        .clickable {
-                            clipSelected = true
-                            editTrayOpen = true
-                            playing = false
-                            onTool("Edit")
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    timelineClips.forEachIndexed { index, segment ->
+                        val segmentFrames = timelineFrames.filterIndexed { frameIndex, _ ->
+                            val frameTime = if (timelineFrames.size <= 1) 0L else durationMs * frameIndex / (timelineFrames.size - 1)
+                            frameTime >= segment.startMs && (frameTime < segment.endMs || index == timelineClips.lastIndex && frameTime <= segment.endMs)
                         }
-                ) {
-                    if (timelineFrames.isNotEmpty()) {
-                        timelineFrames.forEach { frame ->
-                            Image(bitmap = frame.asImageBitmap(), contentDescription = "Video frame",
-                                modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
-                        }
-                    } else {
-                        Box(Modifier.fillMaxSize().background(Panel2), contentAlignment = Alignment.Center) {
-                            Text("VIDEO CLIP", color = Color.White, fontSize = 10.sp)
+                        Box(
+                            Modifier.weight(segment.durationMs.toFloat()).fillMaxHeight().padding(end = 2.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .then(if (selectedClipIndex == index) Modifier.border(2.dp, Emerald, RoundedCornerShape(5.dp)) else Modifier)
+                                .clickable {
+                                    selectedClipIndex = index
+                                    clipSelected = true
+                                    player.seekTo(segment.startMs)
+                                    playing = false
+                                    editTrayOpen = true
+                                    onTool("Edit")
+                                }
+                        ) {
+                            Row(Modifier.fillMaxSize()) {
+                                val visibleFrames = if (segmentFrames.isEmpty()) timelineFrames.take(1) else segmentFrames
+                                visibleFrames.forEach { frame ->
+                                    Image(bitmap = frame.asImageBitmap(), contentDescription = "Video clip segment",
+                                        modifier = Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+                                }
+                            }
+                            if (timelineClips.size > 1) {
+                                Text(" ${index + 1}", color = Color.White, fontSize = 8.sp,
+                                    modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .55f), RoundedCornerShape(3.dp)))
+                            }
                         }
                     }
                 }
@@ -447,14 +483,12 @@ private fun EditorScreen(
                 } else Text("Could not read video duration.", color = Muted)
             }
             "Split" -> {
-                if (durationMs > 1000L) {
-                    Slider(value = splitPoint, onValueChange = { splitPoint = it }, valueRange = 1f..(durationMs - 1).toFloat(),
-                        colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
-                    Text("Split at ${formatTime(splitPoint.toLong())}", color = Green, fontSize = 12.sp)
-                    Button(onClick = { onSplit(0L, splitPoint.toLong(), durationMs) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
-                        Text("Export Both Parts", color = Black)
-                    }
+                Text("Move the video playhead to the cut point, then tap Split.", color = Muted, fontSize = 11.sp)
+                Button(onClick = splitAtPlayhead,
+                    colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.ContentCut, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Split at playhead", color = Black)
                 }
             }
             "Speed" -> {
