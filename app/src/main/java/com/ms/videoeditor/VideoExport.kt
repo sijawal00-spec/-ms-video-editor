@@ -1,10 +1,7 @@
 package com.ms.videoeditor
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.EditedMediaItem
@@ -43,30 +40,13 @@ fun exportTrimmedVideo(
         .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: androidx.media3.transformer.Composition, exportResult: ExportResult) {
                 try {
-                    val values = ContentValues().apply {
-                        put(MediaStore.Video.Media.DISPLAY_NAME, "MS_Video_${System.currentTimeMillis()}.mp4")
-                        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/MS Video Editor")
-                            put(MediaStore.Video.Media.IS_PENDING, 1)
-                        }
-                    }
-                    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                    } else {
-                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                    }
-                    val savedUri = context.contentResolver.insert(collection, values)
-                        ?: throw IllegalStateException("Could not create a video in Gallery.")
-                    context.contentResolver.openOutputStream(savedUri)?.use { output ->
-                        FileInputStream(outputFile).use { input -> input.copyTo(output) }
-                    } ?: throw IllegalStateException("Could not write the exported video.")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val ready = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
-                        context.contentResolver.update(savedUri, ready, null, null)
+                    val outputDir = File(context.filesDir, "trimmed_videos").apply { mkdirs() }
+                    val finalFile = File(outputDir, "MS_Video_${System.currentTimeMillis()}.mp4")
+                    FileInputStream(outputFile).use { input ->
+                        finalFile.outputStream().use { output -> input.copyTo(output) }
                     }
                     outputFile.delete()
-                    onFinished(true, "Trimmed video saved to Gallery > Movies > MS Video Editor.")
+                    onFinished(true, "Trimmed video saved inside MS Video Editor. It was not added to Gallery.")
                 } catch (error: Exception) {
                     outputFile.delete()
                     onFinished(false, error.message ?: "Could not save the exported video.")
