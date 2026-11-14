@@ -420,10 +420,30 @@ private fun EditorScreen(
             }
         }
         if (activeTool == "Edit") {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("Trim", "Split", "Speed", "Crop", "Merge", "Transitions").forEach { tool ->
-                    FilterChip(selected = false, onClick = { onTool(tool) }, label = { Text(tool) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Emerald, selectedLabelColor = Black, labelColor = Color.White))
+            val editTools = listOf(
+                "Split", "Animations", "Effects", "Speed", "Delete",
+                "AI video", "Crop", "Duplicate", "Replace", "Overlay",
+                "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
+                "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
+                "Opacity", "Motion blur", "Lip sync", "Transform", "Auto reframe",
+                "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
+                "Freeze", "Reverse", "Mask", "Unlink"
+            )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                editTools.forEach { tool ->
+                    FilterChip(
+                        selected = activeTool == tool,
+                        onClick = { onTool(tool) },
+                        label = { Text(tool, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Emerald,
+                            selectedLabelColor = Black,
+                            labelColor = Color.White
+                        )
+                    )
                 }
             }
         }
