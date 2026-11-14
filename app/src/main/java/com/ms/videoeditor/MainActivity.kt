@@ -385,10 +385,46 @@ private fun EditorScreen(
             IconButton(onClick = onAddMedia) { Icon(Icons.Default.Add, contentDescription = "Add video", tint = Green) }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Trim", "Split", "Audio", "Text", "Filters", "Effects", "Speed", "Crop", "Transitions", "Merge").forEach { tool ->
-                FilterChip(selected = activeTool == tool, onClick = { onTool(tool) }, label = { Text(tool) },
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Emerald, selectedLabelColor = Black, labelColor = Color.White))
+        val editorTools = listOf(
+            "Edit" to Icons.Default.ContentCut,
+            "Audio" to Icons.Default.MusicNote,
+            "Text" to Icons.Default.Title,
+            "Effects" to Icons.Default.AutoAwesome,
+            "Overlay" to Icons.Default.Layers,
+            "Captions" to Icons.Default.ClosedCaption,
+            "Filters" to Icons.Default.FilterVintage,
+            "Adjust" to Icons.Default.Tune,
+            "Stickers" to Icons.Default.EmojiEmotions,
+            "Generate media" to Icons.Default.AutoFixHigh,
+            "AI avatar" to Icons.Default.Face,
+            "Aspect ratio" to Icons.Default.Crop,
+            "Background" to Icons.Default.Wallpaper
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            editorTools.forEach { (tool, icon) ->
+                Column(
+                    Modifier.width(66.dp).height(68.dp)
+                        .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(10.dp))
+                        .clickable { onTool(tool) }.padding(horizontal = 3.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(icon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(23.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 1)
+                }
+            }
+        }
+        if (activeTool == "Edit") {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                listOf("Trim", "Split", "Speed", "Crop", "Merge", "Transitions").forEach { tool ->
+                    FilterChip(selected = false, onClick = { onTool(tool) }, label = { Text(tool) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Emerald, selectedLabelColor = Black, labelColor = Color.White))
+                }
             }
         }
     }
