@@ -120,7 +120,8 @@ private fun MSVideoEditorApp() {
             videoUri = uri
             videoUris = listOf(uri)
             prefs.edit().putString("active_video_uri", uri.toString())
-                .putString("active_video_uris", uri.toString()).apply()
+                .putString("active_video_uris", uri.toString())
+                .putString("project_clips:${uri}", uri.toString()).apply()
             recentProjects = (listOf(uri) + recentProjects.filter { it != uri }).take(30)
             prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
         }
@@ -137,9 +138,9 @@ private fun MSVideoEditorApp() {
             val activeUri: Uri = videoUri ?: merged.first()
             val serializedUris: String = merged.joinToString(separator = "\n") { item: Uri -> item.toString() }
             prefs.edit().putString("active_video_uri", activeUri.toString())
-                .putString("active_video_uris", serializedUris).apply()
-            recentProjects = (merged + recentProjects.filter { existing: Uri -> existing !in merged }).take(30)
-            prefs.edit().putStringSet("recent_projects", recentProjects.map { it.toString() }.toSet()).apply()
+                .putString("active_video_uris", serializedUris)
+                .putString("project_clips:${activeUri}", serializedUris).apply()
+            // Adding clips updates the open project only; it must not create extra Home projects.
         }
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -152,6 +153,17 @@ private fun MSVideoEditorApp() {
     fun startProject(tool: String) {
         activeTool = tool
         videoPicker.launch(arrayOf("video/*"))
+    }
+    fun openSavedProject(projectUri: Uri) {
+        val savedClips = prefs.getString("project_clips:${projectUri}", null)
+            ?.split("\n")
+            ?.filter { value -> value.isNotBlank() }
+            ?.mapNotNull { value -> runCatching { Uri.parse(value) }.getOrNull() }
+            .orEmpty()
+        videoUri = projectUri
+        videoUris = savedClips.ifEmpty { listOf(projectUri) }
+        audioUri = null
+        activeTool = "Trim"
     }
     MaterialTheme(colorScheme = darkColorScheme(primary = Emerald, secondary = Gold, background = Black, surface = Panel)) {
         Surface(Modifier.fillMaxSize(), color = Black) {
@@ -188,7 +200,7 @@ private fun MSVideoEditorApp() {
                     projects = recentProjects,
                     onNew = { startProject("Trim") },
                     onTool = { startProject(it) },
-                    onProject = { videoUri = it; videoUris = listOf(it); activeTool = "Trim" },
+                    onProject = { openSavedProject(it) },
                     onSettings = { dialog = "Settings" },
                     onPremium = { dialog = "MS Premium" },
                     onPage = { page = it }
@@ -197,7 +209,7 @@ private fun MSVideoEditorApp() {
                     page = page, projects = recentProjects,
                     onBack = { page = "Home" },
                     onNew = { startProject("Trim") },
-                    onProject = { videoUri = it; videoUris = listOf(it) },
+                    onProject = { openSavedProject(it) },
                     onInfo = { dialog = it }
                 )
             }
