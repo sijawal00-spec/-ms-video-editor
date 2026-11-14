@@ -49,7 +49,11 @@ fun exportTrimmedVideo(
                             put(MediaStore.Video.Media.IS_PENDING, 1)
                         }
                     }
-                    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {\n                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)\n                    } else {\n                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI\n                    }
+                    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    } else {
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    }
                     val savedUri = context.contentResolver.insert(collection, values)
                         ?: throw IllegalStateException("Could not create a video in Gallery.")
                     context.contentResolver.openOutputStream(savedUri)?.use { output ->
