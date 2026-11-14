@@ -419,32 +419,51 @@ private fun EditorScreen(
                 }
             }
         }
-        if (activeTool == "Edit") {
-            val editTools = listOf(
-                "Trim", "Split", "Merge", "Transitions",
-                "Animations", "Effects", "Speed", "Delete",
-                "AI video", "Crop", "Duplicate", "Replace", "Overlay",
-                "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
-                "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
-                "Opacity", "Motion blur", "Lip sync", "Transform", "Auto reframe",
-                "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
-                "Freeze", "Reverse", "Mask", "Unlink"
-            )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+        val editTools = listOf(
+            "Trim", "Split", "Merge", "Transitions",
+            "Animations", "Effects", "Speed", "Delete",
+            "AI video", "Crop", "Duplicate", "Replace", "Overlay",
+            "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
+            "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
+            "Opacity", "Motion blur", "Lip sync", "Transform", "Auto reframe",
+            "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
+            "Freeze", "Reverse", "Mask", "Unlink"
+        )
+        if (activeTool == "Edit" || editTools.contains(activeTool)) {
+            Column(
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(12.dp)).padding(vertical = 8.dp)
             ) {
-                editTools.forEach { tool ->
-                    FilterChip(
-                        selected = activeTool == tool,
-                        onClick = { onTool(tool) },
-                        label = { Text(tool, maxLines = 1) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Emerald,
-                            selectedLabelColor = Black,
-                            labelColor = Color.White
-                        )
-                    )
+                Text("EDIT TOOLS", color = Green, fontSize = 10.sp, modifier = Modifier.padding(start = 10.dp, bottom = 6.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    editTools.forEach { tool ->
+                        Column(
+                            Modifier.width(62.dp).height(66.dp)
+                                .background(if (activeTool == tool) Panel2 else Color.Transparent, RoundedCornerShape(8.dp))
+                                .clickable { onTool(tool) }.padding(horizontal = 2.dp, vertical = 5.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            val toolIcon = when (tool) {
+                                "Trim", "Split" -> Icons.Default.ContentCut
+                                "Merge", "Duplicate", "Overlay" -> Icons.Default.Layers
+                                "Animations", "Effects", "AI video", "AI remix" -> Icons.Default.AutoAwesome
+                                "Speed", "Opacity", "Adjust" -> Icons.Default.Tune
+                                "Delete", "Remove BG", "AI remove" -> Icons.Default.Delete
+                                "Crop", "Transform", "Auto reframe" -> Icons.Default.Crop
+                                "Filters" -> Icons.Default.FilterVintage
+                                "Isolate voice", "Enhance voice" -> Icons.Default.MusicNote
+                                "Freeze", "Reverse" -> Icons.Default.PlayArrow
+                                else -> Icons.Default.Tune
+                            }
+                            Icon(toolIcon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
                 }
             }
         }
