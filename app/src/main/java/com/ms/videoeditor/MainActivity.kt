@@ -309,7 +309,7 @@ private fun EditorScreen(
             TextButton(onClick = { onExport(trimRange.start.toLong(), trimRange.endInclusive.toLong()) }) { Text("Export", color = Green) }
         }
         Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-            AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = this@EditorScreen.player; useController = false } },
+            AndroidView(factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = false } },
                 update = { it.player = player }, modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             if (overlayText.isNotBlank()) {
                 Text(overlayText, color = Color.White, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center)
