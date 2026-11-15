@@ -45,9 +45,8 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.awaitEachGesture
-import androidx.compose.ui.input.pointer.awaitFirstDown
-import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 
@@ -600,7 +599,7 @@ private fun EditorScreen(
                                 val second = fingers[1].position
                                 val dx = first.x - second.x
                                 val dy = first.y - second.y
-                                val span = kotlin.math.sqrt(dx * dx + dy * dy)
+                                val span = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                                 if (previousSpan > 0f && span > 0f) {
                                     timelineZoom = (timelineZoom * (span / previousSpan)).coerceIn(1f, 4f)
                                 }
