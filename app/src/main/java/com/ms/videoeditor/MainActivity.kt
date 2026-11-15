@@ -841,7 +841,7 @@ private fun EditorScreen(
                     player.volume = if (clipMuted) 0f else it
                 }, valueRange = 0f..2f,
                     colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
-                Text("\${(videoVolume * 100).toInt()}%", color = Green, fontSize = 11.sp)
+                Text("${(videoVolume * 100).toInt()}%", color = Green, fontSize = 11.sp)
             }
             "Speed" -> {
                 Slider(value = speed, onValueChange = { speed = it }, valueRange = .25f..2f,
