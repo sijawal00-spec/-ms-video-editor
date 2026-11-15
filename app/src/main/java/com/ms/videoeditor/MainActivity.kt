@@ -202,6 +202,10 @@ private fun MSVideoEditorApp() {
                         audioUri = extracted
                         prefs.edit().putString("active_audio_uri", extracted.toString()).apply()
                     },
+                    onAudioRemoved = {
+                        audioUri = null
+                        prefs.edit().remove("active_audio_uri").apply()
+                    },
                     onExport = { startMs, endMs ->
                         exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -383,7 +387,7 @@ private fun SimplePage(page: String, projects: List<Uri>, onBack: () -> Unit, on
 @Composable
 private fun EditorScreen(
     uri: Uri, videoUris: List<Uri>, audioUri: Uri?, activeTool: String, onTool: (String) -> Unit,
-    onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit, onAudioExtracted: (Uri) -> Unit,
+    onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit, onAudioExtracted: (Uri) -> Unit, onAudioRemoved: () -> Unit,
     onExport: (Long, Long) -> Unit, onSplit: (Long, Long, Long) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -886,7 +890,7 @@ private fun EditorScreen(
                         }
                         Column(Modifier.width(68.dp).height(64.dp).clickable {
                             when (tool) {
-                                "Delete" -> { onAudioExtracted(Uri.EMPTY); onTool("Trim") }
+                                "Delete" -> { onAudioRemoved(); onTool("Trim") }
                                 "Split", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
                             }
                         }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
