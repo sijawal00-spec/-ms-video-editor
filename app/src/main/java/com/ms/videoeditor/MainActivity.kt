@@ -502,16 +502,24 @@ private fun EditorScreen(
         val transitionProgress = previewTransition?.let {
             ((playheadMs - it.key + 500L).toFloat() / 1000f).coerceIn(0f, 1f)
         } ?: 0f
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black)
+        // Keep the video preview at a stable visible height; a weighted preview can
+        // collapse to zero when the timeline/tool panels use the remaining column space.
+        Box(Modifier.fillMaxWidth().height(280.dp).background(Color.Black)
             .pointerInput(Unit) {
                 detectTransformGestures { _, _, zoomChange, _ ->
                     previewZoom = (previewZoom * zoomChange).coerceIn(1f, 4f)
                 }
             }, contentAlignment = Alignment.Center) {
-            AndroidView(factory = { ctx -> android.view.TextureView(ctx).apply {
-                player.setVideoTextureView(this)
-            } }, update = { player.setVideoTextureView(it) },
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+            AndroidView(factory = { ctx ->
+                PlayerView(ctx).apply {
+                    this.player = player
+                    useController = false
+                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
+                }
+            }, update = { view ->
+                if (view.player !== player) view.player = player
+            }, modifier = Modifier.fillMaxSize().graphicsLayer {
                     val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
                     val transitionZoom = if (previewTransition?.value == "Zoom") 1f + pulse * .22f else 1f
                     scaleX = previewZoom * transitionZoom
