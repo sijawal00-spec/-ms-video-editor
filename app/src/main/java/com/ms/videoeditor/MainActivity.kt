@@ -407,6 +407,7 @@ private fun EditorScreen(
     var clipSelected by remember(uri) { mutableStateOf(false) }
     var selectedTrack by remember(uri) { mutableStateOf("video") }
     var clipMuted by remember(uri) { mutableStateOf(false) }
+    var audioVolume by remember(audioUri) { mutableFloatStateOf(1f) }
     var previewZoom by remember(uri) { mutableFloatStateOf(1f) }
     val sourceDurations = remember(videoUris) {
         videoUris.map { source ->
@@ -468,7 +469,36 @@ private fun EditorScreen(
             playWhenReady = true
         }
     }
-    DisposableEffect(player) { onDispose { player.release() } }
+    // Play the added/extracted audio as a separate synchronized track.
+    val audioPlayer = remember(audioUri) {
+        audioUri?.let { source ->
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(source))
+                repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                volume = audioVolume
+                prepare()
+            }
+        }
+    }
+    DisposableEffect(player, audioPlayer) {
+        onDispose {
+            player.release()
+            audioPlayer?.release()
+        }
+    }
+    LaunchedEffect(playing, audioPlayer) {
+        audioPlayer?.playWhenReady = playing
+    }
+    LaunchedEffect(audioPlayer, playheadMs) {
+        audioPlayer?.let { track ->
+            if (kotlin.math.abs(track.currentPosition - playheadMs) > 350L) {
+                track.seekTo(playheadMs.coerceAtLeast(0L))
+            }
+        }
+    }
+    LaunchedEffect(audioPlayer, audioVolume) {
+        audioPlayer?.volume = audioVolume.coerceIn(0f, 1f)
+    }
     LaunchedEffect(player) {
         while (true) {
             playheadMs = globalPlaybackPosition(player, sourceDurations).coerceIn(0L, durationMs.coerceAtLeast(0L))
@@ -633,8 +663,9 @@ private fun EditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
-                clipMuted = !clipMuted
-                player.volume = if (clipMuted) 0f else 1f
+                val muteNow = !clipMuted
+                clipMuted = muteNow
+                player.volume = if (muteNow) 0f else 1f
             }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Icon(if (clipMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, contentDescription = "Mute clip",
                     tint = if (clipMuted) Green else Color.White, modifier = Modifier.size(18.dp))
@@ -916,7 +947,19 @@ private fun EditorScreen(
                     }
                 }
                 when (activeTool) {
-                    "Audio Volume" -> { Text("Volume", color = Color.White, fontSize = 12.sp); var volume by remember { mutableFloatStateOf(1f) }; Slider(value = volume, onValueChange = { volume = it }, valueRange = 0f..2f); Text("${(volume * 100).toInt()}%", color = Emerald, fontSize = 11.sp) }
+                    "Audio Volume" -> {
+                        Text("Audio volume", color = Color.White, fontSize = 12.sp)
+                        Slider(
+                            value = audioVolume,
+                            onValueChange = {
+                                audioVolume = it
+                                audioPlayer?.volume = it.coerceIn(0f, 1f)
+                            },
+                            valueRange = 0f..1f,
+                            colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald)
+                        )
+                        Text("${(audioVolume * 100).toInt()}%", color = Emerald, fontSize = 11.sp)
+                    }
                     "Audio Fade" -> { Text("Fade in / Fade out", color = Color.White, fontSize = 12.sp); var fade by remember { mutableFloatStateOf(0f) }; Slider(value = fade, onValueChange = { fade = it }, valueRange = 0f..10f); Text("${fade.toInt()} seconds", color = Emerald, fontSize = 11.sp) }
                     "Audio Audio effects" -> { Text("Audio effects", color = Color.White, fontSize = 12.sp); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Echo", "Reverb", "Bass", "Voice").forEach { Text(it, color = Color.White, modifier = Modifier.background(Panel2, RoundedCornerShape(8.dp)).padding(8.dp)) } } }
                     "Audio Split" -> Text("Split audio at the playhead", color = Muted, fontSize = 11.sp)
