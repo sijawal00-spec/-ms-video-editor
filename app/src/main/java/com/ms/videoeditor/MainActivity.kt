@@ -392,9 +392,10 @@ private fun EditorScreen(
         }
     }
     val durationMs = sourceDurations.sum()
-    // Give every second of footage real horizontal space instead of squeezing the
-    // complete project into the phone width. All timeline tracks share one scroll.
-    val timelineContentWidthDp = (durationMs / 1000f * 80f).coerceAtLeast(320f)
+    // One shared zoom scale controls the video, ruler, Mute/Cover, Audio and Text tracks.
+    var timelineZoom by remember(uri) { mutableFloatStateOf(1f) }
+    val baseTimelineContentWidthDp = (durationMs / 1000f * 80f).coerceAtLeast(320f)
+    val timelineContentWidthDp = baseTimelineContentWidthDp * timelineZoom
     val timelineContentWidthPx = timelineContentWidthDp * androidx.compose.ui.platform.LocalDensity.current.density
     val timelineScrollState = rememberScrollState()
     var timelineClips by remember(videoUris, sourceDurations) {
@@ -580,8 +581,18 @@ private fun EditorScreen(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(8.dp)).padding(2.dp).horizontalScroll(timelineScrollState),
-            verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().height(44.dp)
+                .background(Panel, RoundedCornerShape(8.dp)).padding(2.dp)
+                // Pinch directly on this video/Mute/Cover strip to zoom the entire shared timeline.
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, _, zoomChange, _ ->
+                        timelineZoom = (timelineZoom * zoomChange).coerceIn(1f, 4f)
+                    }
+                }
+                .horizontalScroll(timelineScrollState),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.width(48.dp).fillMaxHeight().clickable {
                 clipMuted = !clipMuted
                 player.volume = if (clipMuted) 0f else 1f
