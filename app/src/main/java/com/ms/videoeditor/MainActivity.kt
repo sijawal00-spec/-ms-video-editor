@@ -499,29 +499,25 @@ private fun EditorScreen(
         val transitionProgress = previewTransition?.let {
             ((playheadMs - it.key + 500L).toFloat() / 1000f).coerceIn(0f, 1f)
         } ?: 0f
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black), contentAlignment = Alignment.Center) {
-            AndroidView(factory = { ctx -> PlayerView(ctx).apply {
-                this.player = player
-                useController = false
-                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-            } }, update = { it.player = player },
-                modifier = Modifier.fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, _, zoomChange, _ ->
-                            previewZoom = (previewZoom * zoomChange).coerceIn(1f, 4f)
-                        }
+        Box(Modifier.fillMaxWidth().weight(1f).background(Color.Black)
+            .pointerInput(Unit) {
+                detectTransformGestures { _, _, zoomChange, _ ->
+                    previewZoom = (previewZoom * zoomChange).coerceIn(1f, 4f)
+                }
+            }, contentAlignment = Alignment.Center) {
+            AndroidView(factory = { ctx -> android.view.TextureView(ctx).apply {
+                player.setVideoTextureView(this)
+            } }, update = { player.setVideoTextureView(it) },
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
+                    val transitionZoom = if (previewTransition?.value == "Zoom") 1f + pulse * .22f else 1f
+                    scaleX = previewZoom * transitionZoom
+                    scaleY = previewZoom * transitionZoom
+                    if (previewTransition?.value == "Slide") {
+                        translationX = (if (transitionProgress < .5f) 1f else -1f) *
+                            (1f - pulse) * size.width * .18f
                     }
-                    .graphicsLayer {
-                        val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
-                        val transitionZoom = if (previewTransition?.value == "Zoom") 1f + pulse * .22f else 1f
-                        scaleX = previewZoom * transitionZoom
-                        scaleY = previewZoom * transitionZoom
-                        if (previewTransition?.value == "Slide") {
-                            translationX = (if (transitionProgress < .5f) 1f else -1f) *
-                                (1f - pulse) * size.width * .18f
-                        }
-                    })
+                })
             if (overlayText.isNotBlank()) {
                 Text(overlayText, color = Color.White, fontSize = 24.sp,
                     modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
@@ -696,24 +692,29 @@ private fun EditorScreen(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
-            }
-            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp).clipToBounds()) {
+            Row(Modifier.width((96f + timelineContentWidthDp).dp)
+                .offset { IntOffset(-timelineScrollState.value, 0) },
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
+                }
+                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
+                    .background(Panel, RoundedCornerShape(5.dp)).clickable { onPickAudio() }.padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart) {
                     Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
                         color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
-            }
-            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
-                    .width(timelineContentWidthDp.dp).fillMaxHeight()
+        Box(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp).clipToBounds()) {
+            Row(Modifier.width((96f + timelineContentWidthDp).dp)
+                .offset { IntOffset(-timelineScrollState.value, 0) },
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
+                }
+                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                     .background(Panel, RoundedCornerShape(5.dp))
                     .clickable { onTool("Text") }.padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
