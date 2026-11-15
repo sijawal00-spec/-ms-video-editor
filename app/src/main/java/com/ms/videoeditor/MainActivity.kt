@@ -396,7 +396,7 @@ private fun EditorScreen(
     val durationMs = sourceDurations.sum()
     // One shared zoom scale controls the video, ruler, Mute/Cover, Audio and Text tracks.
     var timelineZoom by remember(uri) { mutableFloatStateOf(1f) }
-    val baseTimelineContentWidthDp = (durationMs / 1000f * 80f).coerceAtLeast(320f)
+    val baseTimelineContentWidthDp = (durationMs / 1000f * 22f).coerceAtLeast(120f)
     val timelineContentWidthDp = baseTimelineContentWidthDp * timelineZoom
     val timelineContentWidthPx = timelineContentWidthDp * androidx.compose.ui.platform.LocalDensity.current.density
     val timelineScrollState = rememberScrollState()
@@ -597,7 +597,10 @@ private fun EditorScreen(
                 // Pinch directly on the timeline strip; scale is shared by every track.
                 .pointerInput(Unit) {
                     detectTransformGestures { _, _, zoomChange, _ ->
-                        timelineZoom = (timelineZoom * zoomChange).coerceIn(0.5f, 4f)
+                        if (kotlin.math.abs(zoomChange - 1f) > 0.001f) {
+                            playing = false
+                            timelineZoom = (timelineZoom * zoomChange).coerceIn(0.15f, 4f)
+                        }
                     }
                 }
                 .horizontalScroll(timelineScrollState),
