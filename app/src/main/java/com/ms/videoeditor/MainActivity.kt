@@ -68,6 +68,15 @@ private data class TimelineClip(val startMs: Long, val endMs: Long) {
     val durationMs: Long get() = (endMs - startMs).coerceAtLeast(1L)
 }
 
+private data class AudioTimelineClip(
+    val sourceStartMs: Long,
+    val sourceEndMs: Long,
+    val timelineStartMs: Long
+) {
+    val durationMs: Long get() = (sourceEndMs - sourceStartMs).coerceAtLeast(1L)
+    val timelineEndMs: Long get() = timelineStartMs + durationMs
+}
+
 private fun seekGlobalPosition(player: ExoPlayer, positionMs: Long, durations: List<Long>) {
     var remaining = positionMs.coerceAtLeast(0L)
     for (index in durations.indices) {
@@ -432,7 +441,16 @@ private fun EditorScreen(
             result
         } catch (_: Exception) { 0L }
     }
-    val timelineDurationMs = maxOf(durationMs, audioDurationMs).coerceAtLeast(1L)
+    var audioClips by remember(audioUri, audioDurationMs) {
+        mutableStateOf(
+            if (audioUri != null && audioDurationMs > 0L) {
+                listOf(AudioTimelineClip(0L, audioDurationMs, 0L))
+            } else emptyList()
+        )
+    }
+    var selectedAudioClipIndex by remember(audioUri) { mutableIntStateOf(0) }
+    val audioTrackEndMs = audioClips.maxOfOrNull { it.timelineEndMs } ?: 0L
+    val timelineDurationMs = maxOf(durationMs, audioTrackEndMs).coerceAtLeast(1L)
     // One shared zoom scale controls the video, ruler, Mute/Cover, Audio and Text tracks.
     var timelineZoom by remember(uri) { mutableFloatStateOf(1f) }
     val baseTimelineContentWidthDp = (timelineDurationMs / 1000f * 22f).coerceAtLeast(120f)
@@ -502,32 +520,60 @@ private fun EditorScreen(
             audioPlayer?.release()
         }
     }
-    LaunchedEffect(playing, audioPlayer, audioDurationMs, playheadMs) {
-        audioPlayer?.playWhenReady = playing && audioDurationMs > 0L && playheadMs < audioDurationMs
+    // Keep the separate audio player locked to the shared project timeline.
+    // The video clock leads while video is rendering; audio takes over after video ends.
+    LaunchedEffect(player, audioPlayer, playing, audioClips, audioVolume) {
+        while (true) {
+            if (playing) {
+                val videoPosition = globalPlaybackPosition(player, sourceDurations)
+                val videoIsRunning = player.isPlaying
+                val timelinePosition = if (videoIsRunning) videoPosition else playheadMs
+                val activeAudioClip = audioClips.firstOrNull {
+                    timelinePosition >= it.timelineStartMs && timelinePosition < it.timelineEndMs
+                }
+                if (audioPlayer != null && activeAudioClip != null) {
+                    val desiredAudioPosition = activeAudioClip.sourceStartMs +
+                        (timelinePosition - activeAudioClip.timelineStartMs).coerceAtLeast(0L)
+                    val drift = kotlin.math.abs(audioPlayer.currentPosition - desiredAudioPosition)
+                    if (drift > 280L) audioPlayer.seekTo(desiredAudioPosition.coerceIn(activeAudioClip.sourceStartMs, activeAudioClip.sourceEndMs))
+                    audioPlayer.volume = audioVolume.coerceIn(0f, 1f)
+                    audioPlayer.playWhenReady = true
+                } else {
+                    audioPlayer?.playWhenReady = false
+                }
+
+                val position = if (videoIsRunning) {
+                    videoPosition
+                } else if (audioPlayer?.isPlaying == true && activeAudioClip != null) {
+                    activeAudioClip.timelineStartMs +
+                        (audioPlayer.currentPosition - activeAudioClip.sourceStartMs).coerceAtLeast(0L)
+                } else {
+                    playheadMs
+                }
+                playheadMs = position.coerceIn(0L, timelineDurationMs)
+            } else {
+                audioPlayer?.playWhenReady = false
+            }
+            delay(40)
+        }
     }
-    // Seek the music track only for an explicit timeline seek. Do not seek it on
-    // every playhead frame: continuous re-seeking made audio run while video stalled.
-    LaunchedEffect(audioPlayer, seekRevision) {
-        audioPlayer?.seekTo(playheadMs.coerceIn(0L, audioDurationMs.coerceAtLeast(0L)))
+    // Explicit seeks update both players once; normal playback is synchronized by the clock above.
+    LaunchedEffect(audioPlayer, seekRevision, audioClips) {
+        val clip = audioClips.firstOrNull {
+            playheadMs >= it.timelineStartMs && playheadMs < it.timelineEndMs
+        }
+        if (clip != null) {
+            val sourcePosition = clip.sourceStartMs + (playheadMs - clip.timelineStartMs).coerceAtLeast(0L)
+            audioPlayer?.seekTo(sourcePosition.coerceIn(clip.sourceStartMs, clip.sourceEndMs))
+        } else {
+            audioPlayer?.playWhenReady = false
+        }
     }
     LaunchedEffect(audioPlayer, audioVolume) {
         audioPlayer?.volume = audioVolume.coerceIn(0f, 1f)
     }
     LaunchedEffect(player, videoVolume, clipMuted) {
         player.volume = if (clipMuted) 0f else videoVolume.coerceIn(0f, 1f)
-    }
-    LaunchedEffect(player, audioPlayer, playing) {
-        while (true) {
-            if (playing) {
-                // Video is the clock while it is playing. If it ends first, let the
-                // longer audio track continue driving the shared timeline playhead.
-                val videoPosition = globalPlaybackPosition(player, sourceDurations)
-                val audioPosition = audioPlayer?.currentPosition ?: 0L
-                val position = if (!player.isPlaying && audioPlayer?.isPlaying == true) audioPosition else videoPosition
-                playheadMs = position.coerceIn(0L, timelineDurationMs)
-            }
-            delay(40)
-        }
     }
     val splitAtPlayhead: () -> Unit = {
         val position = playheadMs.coerceIn(0L, durationMs)
@@ -553,6 +599,27 @@ private fun EditorScreen(
     }
     LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
     LaunchedEffect(playing, player) { player.playWhenReady = playing }
+    val splitAudioAtPlayhead: () -> Unit = {
+        val index = audioClips.indexOfFirst {
+            playheadMs > it.timelineStartMs + 250L && playheadMs < it.timelineEndMs - 250L
+        }
+        val clip = audioClips.getOrNull(index)
+        if (clip == null) {
+            Toast.makeText(context, "Audio ke andar playhead rakhein, phir Split karein.", Toast.LENGTH_SHORT).show()
+        } else {
+            val sourceCut = clip.sourceStartMs + (playheadMs - clip.timelineStartMs)
+            val updated = audioClips.toMutableList()
+            updated.removeAt(index)
+            updated.add(index, AudioTimelineClip(sourceCut, clip.sourceEndMs, playheadMs))
+            updated.add(index, AudioTimelineClip(clip.sourceStartMs, sourceCut, clip.timelineStartMs))
+            audioClips = updated
+            selectedAudioClipIndex = index + 1
+            selectedTrack = "audio"
+            playing = false
+            onTool("Audio Split")
+            seekRevision++
+        }
+    }
     // Keep the active playhead visible: during playback the timeline content slides
     // underneath the centered playhead, matching the reference editor workflow.
     val timelineViewportWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
@@ -811,33 +878,46 @@ private fun EditorScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp).clipToBounds()) {
-            Row(Modifier.width((96f + timelineContentWidthDp).dp)
-                .offset { IntOffset(-timelineScrollState.value, 0) },
-                verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
-                }
-                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
-                    .background(Panel, RoundedCornerShape(5.dp))
-                    .clickable {
-                        if (audioUri == null) onPickAudio() else {
-                            selectedTrack = "audio"
-                            editTrayOpen = false
-                            onTool("Audio clip")
-                        }
-                    }) {
-                    if (audioUri == null) {
-                        Text("+ Add audio", color = Muted, fontSize = 11.sp,
-                            modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 8.dp))
-                    } else {
-                        val audioClipWidth = timelineContentWidthDp * (audioDurationMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f)
-                        Box(Modifier.width(audioClipWidth.dp).fillMaxHeight()
-                            .background(if (activeTool == "Audio clip") Emerald.copy(alpha = .25f) else Panel2, RoundedCornerShape(5.dp))
-                            .border(1.dp, if (activeTool == "Audio clip") Emerald else Color(0xFF267C62), RoundedCornerShape(5.dp))
-                            .padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                            Text("♪ ${audioUri.lastPathSegment ?: "Audio"}  •  ${formatTime(audioDurationMs)}",
-                                color = Green, fontSize = 10.sp, maxLines = 1)
+        // Audio label stays fixed while its clip content follows the exact same horizontal
+        // scroll offset as the ruler and video track, so the audio row cannot scroll away.
+        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(48.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
+            }
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                if (audioUri == null) {
+                    Text("+ Add audio", color = Muted, fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.CenterStart).clickable { onPickAudio() }.padding(horizontal = 8.dp))
+                } else {
+                    Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
+                        .width(timelineContentWidthDp.dp).fillMaxHeight()) {
+                        audioClips.forEachIndexed { index, clip ->
+                            val left = timelineContentWidthDp * (clip.timelineStartMs.toFloat() / timelineDurationMs.toFloat())
+                            val clipWidth = (timelineContentWidthDp * (clip.durationMs.toFloat() / timelineDurationMs.toFloat())).coerceAtLeast(20f)
+                            Box(
+                                Modifier.offset(x = left.dp).width(clipWidth.dp).fillMaxHeight()
+                                    .background(if (selectedTrack == "audio" && selectedAudioClipIndex == index) Emerald.copy(alpha = .25f) else Panel2, RoundedCornerShape(5.dp))
+                                    .border(1.dp, if (selectedTrack == "audio" && selectedAudioClipIndex == index) Emerald else Color(0xFF267C62), RoundedCornerShape(5.dp))
+                                    .clickable {
+                                        selectedTrack = "audio"
+                                        selectedAudioClipIndex = index
+                                        editTrayOpen = false
+                                        onTool("Audio clip")
+                                    }.padding(horizontal = 5.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    repeat(22) { bar ->
+                                        val h = (5 + ((bar * 7 + index * 11) % 15)).dp
+                                        Box(Modifier.width(2.dp).height(h).background(Emerald.copy(alpha = .85f), RoundedCornerShape(2.dp)))
+                                    }
+                                }
+                                Text(
+                                    "♪ ${formatTime(clip.durationMs)}",
+                                    color = Color.White, fontSize = 8.sp, maxLines = 1,
+                                    modifier = Modifier.align(Alignment.CenterStart).background(Panel2.copy(alpha = .72f))
+                                )
+                            }
                         }
                     }
                 }
@@ -964,7 +1044,7 @@ private fun EditorScreen(
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
         if (selectedTrack == "audio" && audioUri != null && (activeTool == "Audio clip" || activeTool.startsWith("Audio "))) {
-            val audioTools = listOf("Split", "Fade", "Volume", "Audio effects", "Delete")
+            val audioTools = listOf("Split", "Trim", "Fade", "Volume", "Audio effects", "Delete")
             Column(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 5.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.width(48.dp).height(64.dp).clickable { onTool("Trim") }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -974,6 +1054,7 @@ private fun EditorScreen(
                     audioTools.forEach { tool ->
                         val toolIcon = when (tool) {
                             "Split" -> Icons.Default.ContentCut
+                            "Trim" -> Icons.Default.Tune
                             "Fade" -> Icons.Default.GraphicEq
                             "Volume" -> Icons.Default.VolumeUp
                             "Audio effects" -> Icons.Default.AutoAwesome
@@ -982,7 +1063,7 @@ private fun EditorScreen(
                         Column(Modifier.width(68.dp).height(64.dp).clickable {
                             when (tool) {
                                 "Delete" -> { onAudioRemoved(); onTool("Trim") }
-                                "Split", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
+                                "Split", "Trim", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
                             }
                         }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Icon(toolIcon, contentDescription = tool, tint = if (activeTool == "Audio $tool") Emerald else Color.White, modifier = Modifier.size(22.dp))
@@ -1006,7 +1087,40 @@ private fun EditorScreen(
                     }
                     "Audio Fade" -> { Text("Fade in / Fade out", color = Color.White, fontSize = 12.sp); var fade by remember { mutableFloatStateOf(0f) }; Slider(value = fade, onValueChange = { fade = it }, valueRange = 0f..10f); Text("${fade.toInt()} seconds", color = Emerald, fontSize = 11.sp) }
                     "Audio Audio effects" -> { Text("Audio effects", color = Color.White, fontSize = 12.sp); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Echo", "Reverb", "Bass", "Voice").forEach { Text(it, color = Color.White, modifier = Modifier.background(Panel2, RoundedCornerShape(8.dp)).padding(8.dp)) } } }
-                    "Audio Split" -> Text("Split audio at the playhead", color = Muted, fontSize = 11.sp)
+                    "Audio Split" -> {
+                        Text("Playhead par audio ko do hisson mein cut karein.", color = Muted, fontSize = 11.sp)
+                        Button(onClick = splitAudioAtPlayhead,
+                            colors = ButtonDefaults.buttonColors(containerColor = Emerald),
+                            modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.ContentCut, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Split audio at playhead", color = Black)
+                        }
+                    }
+                    "Audio Trim" -> {
+                        val clip = audioClips.getOrNull(selectedAudioClipIndex)
+                        if (clip != null) {
+                            Text("Audio start / end trim", color = Color.White, fontSize = 12.sp)
+                            RangeSlider(
+                                value = clip.sourceStartMs.toFloat()..clip.sourceEndMs.toFloat(),
+                                onValueChange = { range ->
+                                    val updated = audioClips.toMutableList()
+                                    updated[selectedAudioClipIndex] = clip.copy(
+                                        sourceStartMs = range.start.toLong().coerceAtLeast(0L),
+                                        sourceEndMs = range.endInclusive.toLong().coerceAtMost(audioDurationMs)
+                                    )
+                                    audioClips = updated
+                                    seekRevision++
+                                },
+                                valueRange = 0f..audioDurationMs.coerceAtLeast(1L).toFloat(),
+                                colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald)
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("In: ${formatTime(clip.sourceStartMs)}", color = Green, fontSize = 10.sp)
+                                Text("Out: ${formatTime(clip.sourceEndMs)}", color = Green, fontSize = 10.sp)
+                            }
+                        }
+                    }
                 }
             }
         } else if (editTrayOpen) {
