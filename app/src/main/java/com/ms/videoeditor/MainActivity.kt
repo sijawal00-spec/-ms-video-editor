@@ -45,6 +45,9 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitEachGesture
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEvent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 
