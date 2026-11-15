@@ -54,6 +54,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 
 private val Black = Color(0xFF050807)
@@ -908,10 +909,21 @@ private fun EditorScreen(
         }
         // Audio label stays fixed while its clip content follows the exact same horizontal
         // scroll offset as the ruler and video track, so the audio row cannot scroll away.
-        Row(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp)
+                .pointerInput(timelineScrollState) {
+                    detectHorizontalDragGestures { change, dragAmount ->
+                        change.consume()
+                        timelineScrollState.dispatchRawDelta(-dragAmount)
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(Modifier.width(48.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
             }
+            // Keep the audio content origin identical to the video timeline's 96dp left gutter.
+            Spacer(Modifier.width(48.dp))
             Box(Modifier.weight(1f).fillMaxHeight()
                 .background(Panel2, RoundedCornerShape(5.dp)).clipToBounds()) {
                 if (audioUri == null) {
@@ -952,14 +964,22 @@ private fun EditorScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp).clipToBounds()) {
-            Row(Modifier.width((96f + timelineContentWidthDp).dp)
-                .offset { IntOffset(-timelineScrollState.value, 0) },
-                verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
-                }
-                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
+        Row(
+            Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp)
+                .pointerInput(timelineScrollState) {
+                    detectHorizontalDragGestures { change, dragAmount ->
+                        change.consume()
+                        timelineScrollState.dispatchRawDelta(-dragAmount)
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
+            }
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
+                    .width(timelineContentWidthDp.dp).fillMaxHeight()
                     .background(Panel, RoundedCornerShape(5.dp))
                     .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
