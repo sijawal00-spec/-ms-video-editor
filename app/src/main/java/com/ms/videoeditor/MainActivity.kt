@@ -913,6 +913,53 @@ private fun EditorScreen(
                     }
                 }
             }
+        } else if (activeTool == "Audio") {
+            // CapCut-style Audio tray: this is the only area changed for the audio-menu update.
+            val audioTools = listOf(
+                Triple("Extract", Icons.Default.FolderOpen, "extract"),
+                Triple("Sounds", Icons.Default.MusicNote, "sounds"),
+                Triple("Sound FX", Icons.Default.GraphicEq, "effects"),
+                Triple("Record", Icons.Default.Mic, "record"),
+                Triple("Text to audio", Icons.Default.Title, "text"),
+                Triple("Brand music", Icons.Default.Album, "brand"),
+                Triple("Copyright", Icons.Default.Shield, "copyright")
+            )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    Modifier.width(48.dp).height(68.dp).clickable { onTool("Trim") }.padding(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = Color.White, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text("Back", color = Color.White, fontSize = 9.sp)
+                }
+                audioTools.forEach { (label, icon, action) ->
+                    Column(
+                        Modifier.width(72.dp).height(68.dp)
+                            .clickable {
+                                when (action) {
+                                    "sounds", "effects", "brand" -> onPickAudio()
+                                    "extract" -> Toast.makeText(context, "Extract audio from video is not connected yet.", Toast.LENGTH_SHORT).show()
+                                    "record" -> Toast.makeText(context, "Voice recording is not connected yet.", Toast.LENGTH_SHORT).show()
+                                    "text" -> Toast.makeText(context, "Text to audio is not connected yet.", Toast.LENGTH_SHORT).show()
+                                    "copyright" -> Toast.makeText(context, "Copyright checking is not connected yet.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .padding(horizontal = 2.dp, vertical = 5.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(23.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(label, color = Color.White, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
         } else {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
