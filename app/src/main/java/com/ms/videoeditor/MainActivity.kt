@@ -497,6 +497,8 @@ private fun EditorScreen(
     val player = remember(videoUris) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItems(videoUris.map { MediaItem.fromUri(it) })
+            // Let the preview and separate music player mix without audio-focus interruptions.
+            setAudioAttributes(AudioAttributes.DEFAULT, false)
             prepare()
             playWhenReady = true
         }
@@ -528,28 +530,37 @@ private fun EditorScreen(
             if (playing) {
                 val videoPosition = globalPlaybackPosition(player, sourceDurations)
                 val videoIsRunning = player.isPlaying
+                val videoHasEnded = player.playbackState == androidx.media3.common.Player.STATE_ENDED
                 val timelinePosition = if (videoIsRunning) videoPosition else currentPlayheadMs
                 val activeAudioClip = audioClips.firstOrNull {
                     timelinePosition >= it.timelineStartMs && timelinePosition < it.timelineEndMs
                 }
+
                 if (audioPlayer != null && activeAudioClip != null) {
-                    val desiredAudioPosition = activeAudioClip.sourceStartMs +
-                        (timelinePosition - activeAudioClip.timelineStartMs).coerceAtLeast(0L)
-                    val drift = kotlin.math.abs(audioPlayer.currentPosition - desiredAudioPosition)
-                    if (drift > 280L) audioPlayer.seekTo(desiredAudioPosition.coerceIn(activeAudioClip.sourceStartMs, activeAudioClip.sourceEndMs))
-                    audioPlayer.volume = audioVolume.coerceIn(0f, 1f)
-                    audioPlayer.playWhenReady = true
+                    if (videoIsRunning || videoHasEnded) {
+                        val desiredAudioPosition = activeAudioClip.sourceStartMs +
+                            (timelinePosition - activeAudioClip.timelineStartMs).coerceAtLeast(0L)
+                        val drift = kotlin.math.abs(audioPlayer.currentPosition - desiredAudioPosition)
+                        // Large drift correction only: repeated small seeks cause audible restarts.
+                        if (drift > 650L) {
+                            audioPlayer.seekTo(desiredAudioPosition.coerceIn(activeAudioClip.sourceStartMs, activeAudioClip.sourceEndMs))
+                        }
+                        audioPlayer.volume = audioVolume.coerceIn(0f, 1f)
+                        audioPlayer.playWhenReady = true
+                    } else {
+                        // Hold music until the video is actually rendering, not merely requested.
+                        audioPlayer.playWhenReady = false
+                    }
                 } else {
                     audioPlayer?.playWhenReady = false
                 }
 
-                val position = if (videoIsRunning) {
-                    videoPosition
-                } else if (audioPlayer?.isPlaying == true && activeAudioClip != null) {
-                    activeAudioClip.timelineStartMs +
-                        (audioPlayer.currentPosition - activeAudioClip.sourceStartMs).coerceAtLeast(0L)
-                } else {
-                    currentPlayheadMs
+                val position = when {
+                    videoIsRunning -> videoPosition
+                    videoHasEnded && audioPlayer?.isPlaying == true && activeAudioClip != null ->
+                        activeAudioClip.timelineStartMs +
+                            (audioPlayer.currentPosition - activeAudioClip.sourceStartMs).coerceAtLeast(0L)
+                    else -> currentPlayheadMs
                 }
                 playheadMs = position.coerceIn(0L, timelineDurationMs)
             } else {
