@@ -586,29 +586,10 @@ private fun EditorScreen(
         Row(
             Modifier.fillMaxWidth().height(44.dp)
                 .background(Panel, RoundedCornerShape(8.dp)).padding(2.dp)
-                // Two-finger pinch zoom only; one-finger drags remain available to horizontalScroll.
+                // Pinch directly on the timeline strip; scale is shared by every track.
                 .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        var previousSpan = 0f
-                        do {
-                            val event = awaitPointerEvent()
-                            val fingers = event.changes.filter { it.pressed }
-                            if (fingers.size >= 2) {
-                                val first = fingers[0].position
-                                val second = fingers[1].position
-                                val dx = first.x - second.x
-                                val dy = first.y - second.y
-                                val span = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
-                                if (previousSpan > 0f && span > 0f) {
-                                    timelineZoom = (timelineZoom * (span / previousSpan)).coerceIn(1f, 4f)
-                                }
-                                previousSpan = span
-                                fingers.forEach { it.consume() }
-                            } else {
-                                previousSpan = 0f
-                            }
-                        } while (event.changes.any { it.pressed })
+                    detectTransformGestures { _, _, zoomChange, _ ->
+                        timelineZoom = (timelineZoom * zoomChange).coerceIn(0.5f, 4f)
                     }
                 }
                 .horizontalScroll(timelineScrollState),
@@ -732,7 +713,9 @@ private fun EditorScreen(
                     Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
                 }
                 Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
-                    .background(Panel, RoundedCornerShape(5.dp)).padding(horizontal = 8.dp),
+                    .background(Panel, RoundedCornerShape(5.dp))
+                    .clickable { onPickAudio() }
+                    .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
                     Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
                         color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
@@ -748,7 +731,7 @@ private fun EditorScreen(
                 }
                 Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                     .background(Panel, RoundedCornerShape(5.dp))
-                    .clickable { onTool("Text") }.padding(horizontal = 8.dp),
+                    .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
                     Text(if (overlayText.isBlank()) "+ Add text" else overlayText,
                         color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
