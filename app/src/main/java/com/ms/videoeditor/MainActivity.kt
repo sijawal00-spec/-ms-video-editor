@@ -746,11 +746,14 @@ private fun EditorScreen(
                 }
                 Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                     .background(Panel, RoundedCornerShape(5.dp))
-                    .clickable { onPickAudio() }
+                    .clickable {
+                        if (audioUri == null) onPickAudio() else { editTrayOpen = false; onTool("Audio clip") }
+                    }
+                    .background(if (activeTool == "Audio clip") Emerald.copy(alpha = .18f) else Panel, RoundedCornerShape(5.dp))
                     .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
                     Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
-                        color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
+                        color = if (activeTool == "Audio clip") Emerald else if (audioUri == null) Muted else Green, fontSize = 11.sp)
                 }
             }
         }
@@ -865,7 +868,41 @@ private fun EditorScreen(
         Spacer(Modifier.weight(1f))
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
-        if (editTrayOpen) {
+        if (activeTool == "Audio clip" && audioUri != null) {
+            val audioTools = listOf("Split", "Fade", "Volume", "Audio effects", "Delete")
+            Column(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 5.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.width(48.dp).height(64.dp).clickable { onTool("Trim") }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
+                        Text("Back", color = Color.White, fontSize = 9.sp)
+                    }
+                    audioTools.forEach { tool ->
+                        val toolIcon = when (tool) {
+                            "Split" -> Icons.Default.ContentCut
+                            "Fade" -> Icons.Default.GraphicEq
+                            "Volume" -> Icons.Default.VolumeUp
+                            "Audio effects" -> Icons.Default.AutoAwesome
+                            else -> Icons.Default.Delete
+                        }
+                        Column(Modifier.width(68.dp).height(64.dp).clickable {
+                            when (tool) {
+                                "Delete" -> { onAudioExtracted(Uri.EMPTY); onTool("Trim") }
+                                "Split", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
+                            }
+                        }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            Icon(toolIcon, contentDescription = tool, tint = if (activeTool == "Audio $tool") Emerald else Color.White, modifier = Modifier.size(22.dp))
+                            Text(tool, color = if (activeTool == "Audio $tool") Emerald else Color.White, fontSize = 9.sp, maxLines = 1)
+                        }
+                    }
+                }
+                when (activeTool) {
+                    "Audio Volume" -> { Text("Volume", color = Color.White, fontSize = 12.sp); var volume by remember { mutableFloatStateOf(1f) }; Slider(value = volume, onValueChange = { volume = it }, valueRange = 0f..2f); Text("${(volume * 100).toInt()}%", color = Emerald, fontSize = 11.sp) }
+                    "Audio Fade" -> { Text("Fade in / Fade out", color = Color.White, fontSize = 12.sp); var fade by remember { mutableFloatStateOf(0f) }; Slider(value = fade, onValueChange = { fade = it }, valueRange = 0f..10f); Text("${fade.toInt()} seconds", color = Emerald, fontSize = 11.sp) }
+                    "Audio Audio effects" -> { Text("Audio effects", color = Color.White, fontSize = 12.sp); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Echo", "Reverb", "Bass", "Voice").forEach { Text(it, color = Color.White, modifier = Modifier.background(Panel2, RoundedCornerShape(8.dp)).padding(8.dp)) } } }
+                    "Audio Split" -> Text("Split audio at the playhead", color = Muted, fontSize = 11.sp)
+                }
+            }
+        } else if (editTrayOpen) {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 5.dp),
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
