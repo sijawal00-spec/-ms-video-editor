@@ -843,6 +843,9 @@ private fun EditorScreen(
             "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
             "Freeze", "Reverse", "Mask", "Unlink"
         )
+        // Consume the remaining vertical space so the editing toolbar sits at the bottom,
+        // removing the unused black gap beneath it without changing the preview or timeline.
+        Spacer(Modifier.weight(1f))
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
         if (editTrayOpen) {
