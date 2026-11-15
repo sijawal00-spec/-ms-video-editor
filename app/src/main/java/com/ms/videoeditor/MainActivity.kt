@@ -405,6 +405,7 @@ private fun EditorScreen(
     val extractScope = rememberCoroutineScope()
     var editTrayOpen by remember { mutableStateOf(false) }
     var clipSelected by remember(uri) { mutableStateOf(false) }
+    var selectedTrack by remember(uri) { mutableStateOf("video") }
     var clipMuted by remember(uri) { mutableStateOf(false) }
     var previewZoom by remember(uri) { mutableFloatStateOf(1f) }
     val sourceDurations = remember(videoUris) {
@@ -680,6 +681,7 @@ private fun EditorScreen(
                                 .clip(RoundedCornerShape(5.dp))
                                 .then(if (selectedClipIndex == index) Modifier.border(2.dp, Emerald, RoundedCornerShape(5.dp)) else Modifier)
                                 .clickable {
+                                    selectedTrack = "video"
                                     selectedClipIndex = index
                                     clipSelected = true
                                     seekGlobalPosition(player, segment.startMs, sourceDurations)
@@ -751,7 +753,11 @@ private fun EditorScreen(
                 Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                     .background(Panel, RoundedCornerShape(5.dp))
                     .clickable {
-                        if (audioUri == null) onPickAudio() else { editTrayOpen = false; onTool("Audio clip") }
+                        if (audioUri == null) onPickAudio() else {
+                            selectedTrack = "audio"
+                            editTrayOpen = false
+                            onTool("Audio clip")
+                        }
                     }
                     .background(if (activeTool == "Audio clip") Emerald.copy(alpha = .18f) else Panel, RoundedCornerShape(5.dp))
                     .padding(horizontal = 8.dp),
@@ -827,6 +833,16 @@ private fun EditorScreen(
                 }
                 Text("Tap the + box between clips to add or change a transition.", color = Muted, fontSize = 10.sp)
             }
+            "Video Volume" -> {
+                var videoVolume by remember(uri) { mutableFloatStateOf(1f) }
+                Text("Video volume", color = Color.White, fontSize = 12.sp)
+                Slider(value = videoVolume, onValueChange = {
+                    videoVolume = it
+                    player.volume = if (clipMuted) 0f else it
+                }, valueRange = 0f..2f,
+                    colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
+                Text("\${(videoVolume * 100).toInt()}%", color = Green, fontSize = 11.sp)
+            }
             "Speed" -> {
                 Slider(value = speed, onValueChange = { speed = it }, valueRange = .25f..2f,
                     colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
@@ -859,7 +875,7 @@ private fun EditorScreen(
             "Background" to Icons.Default.Wallpaper
         )
         val editTools = listOf(
-            "Split", "Animations", "Effects", "Speed", "Delete",
+            "Split", "Animations", "Effects", "Speed", "Volume", "Delete",
             "AI video", "Crop", "Duplicate", "Replace", "Overlay",
             "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
             "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
@@ -872,7 +888,7 @@ private fun EditorScreen(
         Spacer(Modifier.weight(1f))
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
-        if (activeTool == "Audio clip" && audioUri != null) {
+        if (selectedTrack == "audio" && audioUri != null && (activeTool == "Audio clip" || activeTool.startsWith("Audio "))) {
             val audioTools = listOf("Split", "Fade", "Volume", "Audio effects", "Delete")
             Column(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 5.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -928,6 +944,7 @@ private fun EditorScreen(
                         "Animations" -> Icons.Default.Movie
                         "Effects" -> Icons.Default.AutoAwesome
                         "Speed" -> Icons.Default.Speed
+                        "Volume" -> Icons.Default.VolumeUp
                         "Delete" -> Icons.Default.Delete
                         "AI video" -> Icons.Default.VideoLibrary
                         "Crop" -> Icons.Default.Crop
@@ -961,7 +978,10 @@ private fun EditorScreen(
                     }
                     Column(
                         Modifier.width(62.dp).height(68.dp)
-                            .clickable { onTool(tool) }.padding(horizontal = 2.dp, vertical = 5.dp),
+                            .clickable {
+                                selectedTrack = "video"
+                                onTool(if (tool == "Volume") "Video Volume" else tool)
+                            }.padding(horizontal = 2.dp, vertical = 5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
