@@ -474,6 +474,7 @@ private fun EditorScreen(
     var speed by remember(uri) { mutableFloatStateOf(1f) }
     var playing by remember(uri) { mutableStateOf(true) }
     var playheadMs by remember(uri) { mutableLongStateOf(0L) }
+    var seekRevision by remember(uri) { mutableIntStateOf(0) }
     val player = remember(videoUris) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItems(videoUris.map { MediaItem.fromUri(it) })
@@ -501,15 +502,13 @@ private fun EditorScreen(
             audioPlayer?.release()
         }
     }
-    LaunchedEffect(playing, audioPlayer) {
-        audioPlayer?.playWhenReady = playing && playheadMs < audioDurationMs
+    LaunchedEffect(playing, audioPlayer, audioDurationMs, playheadMs) {
+        audioPlayer?.playWhenReady = playing && audioDurationMs > 0L && playheadMs < audioDurationMs
     }
-    LaunchedEffect(audioPlayer, playheadMs) {
-        audioPlayer?.let { track ->
-            if (kotlin.math.abs(track.currentPosition - playheadMs) > 350L) {
-                track.seekTo(playheadMs.coerceAtLeast(0L))
-            }
-        }
+    // Seek the music track only for an explicit timeline seek. Do not seek it on
+    // every playhead frame: continuous re-seeking made audio run while video stalled.
+    LaunchedEffect(audioPlayer, seekRevision) {
+        audioPlayer?.seekTo(playheadMs.coerceIn(0L, audioDurationMs.coerceAtLeast(0L)))
     }
     LaunchedEffect(audioPlayer, audioVolume) {
         audioPlayer?.volume = audioVolume.coerceIn(0f, 1f)
@@ -517,18 +516,16 @@ private fun EditorScreen(
     LaunchedEffect(player, videoVolume, clipMuted) {
         player.volume = if (clipMuted) 0f else videoVolume.coerceIn(0f, 1f)
     }
-    LaunchedEffect(audioPlayer, playheadMs, audioDurationMs) {
-        audioPlayer?.let { track ->
-            if (audioDurationMs > 0L && playheadMs < audioDurationMs &&
-                kotlin.math.abs(track.currentPosition - playheadMs) > 200L) {
-                track.seekTo(playheadMs.coerceIn(0L, audioDurationMs))
-            }
-            if (playheadMs >= audioDurationMs) track.pause()
-        }
-    }
-    LaunchedEffect(player) {
+    LaunchedEffect(player, audioPlayer, playing) {
         while (true) {
-            playheadMs = globalPlaybackPosition(player, sourceDurations).coerceIn(0L, durationMs.coerceAtLeast(0L))
+            if (playing) {
+                // Video is the clock while it is playing. If it ends first, let the
+                // longer audio track continue driving the shared timeline playhead.
+                val videoPosition = globalPlaybackPosition(player, sourceDurations)
+                val audioPosition = audioPlayer?.currentPosition ?: 0L
+                val position = if (!player.isPlaying && audioPlayer?.isPlaying == true) audioPosition else videoPosition
+                playheadMs = position.coerceIn(0L, timelineDurationMs)
+            }
             delay(40)
         }
     }
@@ -545,8 +542,9 @@ private fun EditorScreen(
             updated.add(index, TimelineClip(clip.startMs, position))
             timelineClips = updated
             selectedClipIndex = index + 1
-            seekGlobalPosition(player, position, sourceDurations)
-            playheadMs = position
+            seekGlobalPosition(player, position.coerceAtMost(durationMs), sourceDurations)
+            playheadMs = position.coerceIn(0L, timelineDurationMs)
+            seekRevision++
             playing = false
             clipSelected = true
             editTrayOpen = true
@@ -627,13 +625,23 @@ private fun EditorScreen(
                 Icon(Icons.Default.ContentCut, contentDescription = "Split at playhead", tint = Color.White)
             }
             IconButton(onClick = { onTool("Keyframe") }) { Icon(Icons.Default.Diamond, contentDescription = "Keyframe", tint = Color.White) }
-            IconButton(onClick = { seekGlobalPosition(player, (playheadMs - 1000L).coerceAtLeast(0L), sourceDurations) }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
-            IconButton(onClick = { seekGlobalPosition(player, (playheadMs + 1000L).coerceAtMost(durationMs), sourceDurations) }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
+            IconButton(onClick = {
+                val position = (playheadMs - 1000L).coerceAtLeast(0L)
+                seekGlobalPosition(player, position.coerceAtMost(durationMs), sourceDurations)
+                playheadMs = position
+                seekRevision++
+            }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
+            IconButton(onClick = {
+                val position = (playheadMs + 1000L).coerceAtMost(timelineDurationMs)
+                seekGlobalPosition(player, position.coerceAtMost(durationMs), sourceDurations)
+                playheadMs = position
+                seekRevision++
+            }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
         Row(Modifier.fillMaxWidth().height(28.dp).padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text("/", color = Muted, fontSize = 9.sp)
-            Text(formatTime(durationMs), color = Muted, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(formatTime(timelineDurationMs), color = Muted, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                 val rulerWidth = timelineContentWidthDp.dp
                 val stepMs = when {
@@ -718,9 +726,10 @@ private fun EditorScreen(
                     .pointerInput(durationMs, timelineClips, timelineScrollState.value) {
                         detectTapGestures { tap ->
                             val contentX = (tap.x + timelineScrollState.value).coerceIn(0f, timelineContentWidthPx)
-                            val position = if (timelineContentWidthPx > 0f) (timelineDurationMs * (contentX / timelineContentWidthPx)).toLong().coerceAtMost(durationMs) else 0L
+                            val position = if (timelineContentWidthPx > 0f) (timelineDurationMs * (contentX / timelineContentWidthPx)).toLong().coerceAtMost(timelineDurationMs) else 0L
                             playheadMs = position
-                            seekGlobalPosition(player, position, sourceDurations)
+                            seekGlobalPosition(player, position.coerceAtMost(durationMs), sourceDurations)
+                            seekRevision++
                             playing = false
                             selectedClipIndex = timelineClips.indexOfFirst { position >= it.startMs && position < it.endMs }.coerceAtLeast(0)
                         }
@@ -742,8 +751,9 @@ private fun EditorScreen(
                                     selectedTrack = "video"
                                     selectedClipIndex = index
                                     clipSelected = true
-                                    seekGlobalPosition(player, segment.startMs, sourceDurations)
+                                    seekGlobalPosition(player, segment.startMs.coerceAtMost(durationMs), sourceDurations)
                                     playheadMs = segment.startMs
+                                    seekRevision++
                                     playing = false
                                     editTrayOpen = true
                                     onTool("Edit")
