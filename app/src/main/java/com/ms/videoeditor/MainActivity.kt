@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 
 private val Black = Color(0xFF050807)
 private val Panel = Color(0xFF111816)
@@ -378,6 +379,7 @@ private fun EditorScreen(
     var editTrayOpen by remember { mutableStateOf(false) }
     var clipSelected by remember(uri) { mutableStateOf(false) }
     var clipMuted by remember(uri) { mutableStateOf(false) }
+    var previewZoom by remember(uri) { mutableFloatStateOf(1f) }
     val sourceDurations = remember(videoUris) {
         videoUris.map { source ->
             try {
@@ -503,19 +505,23 @@ private fun EditorScreen(
                 useController = false
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
-            } }, update = { it.player = player }, modifier = Modifier.fillMaxSize().graphicsLayer {
-                val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
-                when (previewTransition?.value) {
-                    "Zoom" -> {
-                        scaleX = 1f + pulse * .22f
-                        scaleY = 1f + pulse * .22f
+            } }, update = { it.player = player },
+                modifier = Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoomChange, _ ->
+                            previewZoom = (previewZoom * zoomChange).coerceIn(1f, 4f)
+                        }
                     }
-                    "Slide" -> {
-                        translationX = (if (transitionProgress < .5f) 1f else -1f) *
-                            (1f - pulse) * size.width * .18f
-                    }
-                }
-            })
+                    .graphicsLayer {
+                        val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
+                        val transitionZoom = if (previewTransition?.value == "Zoom") 1f + pulse * .22f else 1f
+                        scaleX = previewZoom * transitionZoom
+                        scaleY = previewZoom * transitionZoom
+                        if (previewTransition?.value == "Slide") {
+                            translationX = (if (transitionProgress < .5f) 1f else -1f) *
+                                (1f - pulse) * size.width * .18f
+                        }
+                    })
             if (overlayText.isNotBlank()) {
                 Text(overlayText, color = Color.White, fontSize = 24.sp,
                     modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
@@ -705,9 +711,14 @@ private fun EditorScreen(
             Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(timelineScrollState)) {
-                Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight().background(Panel, RoundedCornerShape(5.dp)).clickable { onTool("Text") }.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-                    Text(if (overlayText.isBlank()) "+ Add text" else overlayText, color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
+            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
+                    .width(timelineContentWidthDp.dp).fillMaxHeight()
+                    .background(Panel, RoundedCornerShape(5.dp))
+                    .clickable { onTool("Text") }.padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart) {
+                    Text(if (overlayText.isBlank()) "+ Add text" else overlayText,
+                        color = if (overlayText.isBlank()) Muted else Green, fontSize = 11.sp, maxLines = 1)
                 }
             }
         }
@@ -779,10 +790,7 @@ private fun EditorScreen(
                 Text(if (audioUri == null) "No audio selected" else "Audio file selected: ${audioUri.lastPathSegment ?: "audio"}", color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
                 Text("Adding and mixing this track into the final exported video is not connected yet.", color = Muted, fontSize = 11.sp)
             }
-            else -> {
-                Text("$activeTool controls are not implemented yet.", color = Muted, fontSize = 12.sp)
-                Text("This button now opens its own tool panel; processing will be added in the next development stage.", color = Muted, fontSize = 11.sp)
-            }
+            else -> { /* Unfinished-tool notices are intentionally hidden. */ }
         }
         val editorTools = listOf(
             "Edit" to Icons.Default.ContentCut,
