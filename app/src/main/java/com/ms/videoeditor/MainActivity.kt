@@ -492,6 +492,7 @@ private fun EditorScreen(
     var speed by remember(uri) { mutableFloatStateOf(1f) }
     var playing by remember(uri) { mutableStateOf(true) }
     var playheadMs by remember(uri) { mutableLongStateOf(0L) }
+    val currentPlayheadMs by rememberUpdatedState(playheadMs)
     var seekRevision by remember(uri) { mutableIntStateOf(0) }
     val player = remember(videoUris) {
         ExoPlayer.Builder(context).build().apply {
@@ -527,7 +528,7 @@ private fun EditorScreen(
             if (playing) {
                 val videoPosition = globalPlaybackPosition(player, sourceDurations)
                 val videoIsRunning = player.isPlaying
-                val timelinePosition = if (videoIsRunning) videoPosition else playheadMs
+                val timelinePosition = if (videoIsRunning) videoPosition else currentPlayheadMs
                 val activeAudioClip = audioClips.firstOrNull {
                     timelinePosition >= it.timelineStartMs && timelinePosition < it.timelineEndMs
                 }
@@ -548,7 +549,7 @@ private fun EditorScreen(
                     activeAudioClip.timelineStartMs +
                         (audioPlayer.currentPosition - activeAudioClip.sourceStartMs).coerceAtLeast(0L)
                 } else {
-                    playheadMs
+                    currentPlayheadMs
                 }
                 playheadMs = position.coerceIn(0L, timelineDurationMs)
             } else {
@@ -599,6 +600,21 @@ private fun EditorScreen(
     }
     LaunchedEffect(speed, player) { player.playbackParameters = PlaybackParameters(speed) }
     LaunchedEffect(playing, player) { player.playWhenReady = playing }
+    val deleteSelectedAudioClip: () -> Unit = {
+        val index = selectedAudioClipIndex.coerceIn(0, (audioClips.size - 1).coerceAtLeast(0))
+        val clip = audioClips.getOrNull(index)
+        if (clip != null) {
+            val remaining = audioClips.filterIndexed { itemIndex, _ -> itemIndex != index }
+                .map { item -> if (item.timelineStartMs > clip.timelineStartMs) item.copy(timelineStartMs = (item.timelineStartMs - clip.durationMs).coerceAtLeast(0L)) else item }
+            if (remaining.isEmpty()) {
+                onAudioRemoved()
+            } else {
+                audioClips = remaining
+                selectedAudioClipIndex = (index - 1).coerceIn(0, remaining.lastIndex)
+                seekRevision++
+            }
+        }
+    }
     val splitAudioAtPlayhead: () -> Unit = {
         val index = audioClips.indexOfFirst {
             playheadMs > it.timelineStartMs + 250L && playheadMs < it.timelineEndMs - 250L
@@ -1062,7 +1078,7 @@ private fun EditorScreen(
                         }
                         Column(Modifier.width(68.dp).height(64.dp).clickable {
                             when (tool) {
-                                "Delete" -> { onAudioRemoved(); onTool("Trim") }
+                                "Delete" -> { deleteSelectedAudioClip(); onTool("Audio clip") }
                                 "Split", "Trim", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
                             }
                         }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
