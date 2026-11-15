@@ -43,6 +43,8 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -193,6 +195,10 @@ private fun MSVideoEditorApp() {
                     },
                     onAddMedia = { multiVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
                     onPickAudio = { audioPicker.launch(arrayOf("audio/*")) },
+                    onAudioExtracted = { extracted ->
+                        audioUri = extracted
+                        prefs.edit().putString("active_audio_uri", extracted.toString()).apply()
+                    },
                     onExport = { startMs, endMs ->
                         exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -374,10 +380,22 @@ private fun SimplePage(page: String, projects: List<Uri>, onBack: () -> Unit, on
 @Composable
 private fun EditorScreen(
     uri: Uri, videoUris: List<Uri>, audioUri: Uri?, activeTool: String, onTool: (String) -> Unit,
-    onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit,
+    onBack: () -> Unit, onAddMedia: () -> Unit, onPickAudio: () -> Unit, onAudioExtracted: (Uri) -> Unit,
     onExport: (Long, Long) -> Unit, onSplit: (Long, Long, Long) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showExtractPicker by remember { mutableStateOf(false) }
+    var extractCandidates by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var selectedExtractVideo by remember { mutableIntStateOf(-1) }
+    var extractingAudio by remember { mutableStateOf(false) }
+    val extractVideoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
+    ) { picked ->
+        extractCandidates = picked
+        selectedExtractVideo = if (picked.isNotEmpty()) 0 else -1
+        showExtractPicker = picked.isNotEmpty()
+    }
+    val extractScope = rememberCoroutineScope()
     var editTrayOpen by remember { mutableStateOf(false) }
     var clipSelected by remember(uri) { mutableStateOf(false) }
     var clipMuted by remember(uri) { mutableStateOf(false) }
@@ -811,11 +829,7 @@ private fun EditorScreen(
                 Text("Text preview overlay. Burning text into the exported video is still being developed.", color = Muted, fontSize = 11.sp)
             }
             "Audio" -> {
-                Button(onClick = onPickAudio, colors = ButtonDefaults.buttonColors(containerColor = Emerald), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.MusicNote, contentDescription = null); Spacer(Modifier.width(6.dp)); Text("Choose Audio", color = Black)
-                }
-                Text(if (audioUri == null) "No audio selected" else "Audio file selected: ${audioUri.lastPathSegment ?: "audio"}", color = if (audioUri == null) Muted else Green, fontSize = 11.sp)
-                Text("Adding and mixing this track into the final exported video is not connected yet.", color = Muted, fontSize = 11.sp)
+                // Audio actions are provided in the bottom Audio tray.
             }
             else -> { /* Unfinished-tool notices are intentionally hidden. */ }
         }
@@ -944,7 +958,7 @@ private fun EditorScreen(
                             .clickable {
                                 when (action) {
                                     "sounds", "effects", "brand" -> onPickAudio()
-                                    "extract" -> Toast.makeText(context, "Extract audio from video is not connected yet.", Toast.LENGTH_SHORT).show()
+                                    "extract" -> extractVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                                     "record" -> Toast.makeText(context, "Voice recording is not connected yet.", Toast.LENGTH_SHORT).show()
                                     "text" -> Toast.makeText(context, "Text to audio is not connected yet.", Toast.LENGTH_SHORT).show()
                                     "copyright" -> Toast.makeText(context, "Copyright checking is not connected yet.", Toast.LENGTH_SHORT).show()
@@ -988,6 +1002,135 @@ private fun EditorScreen(
                 }
             }
         }
+    }
+}
+
+    if (showExtractPicker) {
+        Dialog(onDismissRequest = { if (!extractingAudio) showExtractPicker = false }) {
+            Surface(
+                color = Panel,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(.88f)
+            ) {
+                Column(Modifier.fillMaxSize().padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (!extractingAudio) showExtractPicker = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close gallery", tint = Color.White)
+                        }
+                        Text("Albums", color = Color.White, fontSize = 17.sp, modifier = Modifier.weight(1f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text("${extractCandidates.size} videos", color = Muted, fontSize = 10.sp)
+                    }
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        itemsIndexed(extractCandidates) { index, candidate ->
+                            val chosen = selectedExtractVideo == index
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .background(if (chosen) Emerald.copy(alpha = .18f) else Panel2, RoundedCornerShape(8.dp))
+                                    .border(if (chosen) 1.dp else 0.dp, if (chosen) Emerald else Panel2, RoundedCornerShape(8.dp))
+                                    .clickable { selectedExtractVideo = index }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.VideoFile, contentDescription = null,
+                                    tint = if (chosen) Emerald else Color.White, modifier = Modifier.size(34.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(candidate.lastPathSegment?.substringAfterLast('/') ?: "Video ${index + 1}",
+                                        color = Color.White, maxLines = 1)
+                                    Text("Select video to extract its audio", color = Muted, fontSize = 10.sp)
+                                }
+                                Icon(if (chosen) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                    contentDescription = if (chosen) "Selected" else "Select",
+                                    tint = if (chosen) Emerald else Muted)
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            val source = extractCandidates.getOrNull(selectedExtractVideo)
+                            if (source != null && !extractingAudio) {
+                                extractingAudio = true
+                                extractScope.launch {
+                                    val result = withContext(Dispatchers.IO) { extractAudioTrack(context, source) }
+                                    extractingAudio = false
+                                    if (result != null) {
+                                        onAudioExtracted(result)
+                                        showExtractPicker = false
+                                        Toast.makeText(context, "Audio extracted and added to timeline.", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "Selected video mein audio track nahi mila ya extract nahi ho saka.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = selectedExtractVideo >= 0 && !extractingAudio,
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald, disabledContainerColor = Panel2),
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                    ) {
+                        if (extractingAudio) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("Extract and add audio", color = Black)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun extractAudioTrack(context: android.content.Context, source: Uri): Uri? {
+    var extractor: android.media.MediaExtractor? = null
+    var muxer: android.media.MediaMuxer? = null
+    var muxerStarted = false
+    var outputFile: java.io.File? = null
+    return try {
+        extractor = android.media.MediaExtractor()
+        extractor.setDataSource(context, source, null)
+        var sourceAudioTrack = -1
+        for (index in 0 until extractor.trackCount) {
+            val trackFormat = extractor.getTrackFormat(index)
+            val mime = trackFormat.getString(android.media.MediaFormat.KEY_MIME).orEmpty()
+            if (mime.startsWith("audio/")) {
+                sourceAudioTrack = index
+                break
+            }
+        }
+        if (sourceAudioTrack < 0) return null
+        val outputDirectory = java.io.File(context.filesDir, "extracted_audio").apply { mkdirs() }
+        outputFile = java.io.File(outputDirectory, "audio_${System.currentTimeMillis()}.m4a")
+        muxer = android.media.MediaMuxer(
+            outputFile.absolutePath,
+            android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+        )
+        extractor.selectTrack(sourceAudioTrack)
+        muxer.addTrack(extractor.getTrackFormat(sourceAudioTrack))
+        muxer.start()
+        muxerStarted = true
+        val buffer = java.nio.ByteBuffer.allocate(1024 * 1024)
+        val info = android.media.MediaCodec.BufferInfo()
+        while (true) {
+            buffer.clear()
+            val sampleSize = extractor.readSampleData(buffer, 0)
+            if (sampleSize < 0) break
+            info.offset = 0
+            info.size = sampleSize
+            info.presentationTimeUs = extractor.sampleTime
+            info.flags = extractor.sampleFlags
+            muxer.writeSampleData(0, buffer, info)
+            extractor.advance()
+        }
+        muxer.stop()
+        muxerStarted = false
+        Uri.fromFile(outputFile)
+    } catch (_: Exception) {
+        outputFile?.delete()
+        null
+    } finally {
+        if (muxerStarted) runCatching { muxer?.stop() }
+        runCatching { muxer?.release() }
+        runCatching { extractor?.release() }
     }
 }
 
