@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.media3.common.MediaItem
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -408,6 +409,7 @@ private fun EditorScreen(
     var selectedTrack by remember(uri) { mutableStateOf("video") }
     var clipMuted by remember(uri) { mutableStateOf(false) }
     var audioVolume by remember(audioUri) { mutableFloatStateOf(1f) }
+    var videoVolume by remember(uri) { mutableFloatStateOf(1f) }
     var previewZoom by remember(uri) { mutableFloatStateOf(1f) }
     val sourceDurations = remember(videoUris) {
         videoUris.map { source ->
@@ -421,9 +423,19 @@ private fun EditorScreen(
         }
     }
     val durationMs = sourceDurations.sum()
+    val audioDurationMs = remember(audioUri) {
+        if (audioUri == null) 0L else try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(context, audioUri)
+            val result = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            retriever.release()
+            result
+        } catch (_: Exception) { 0L }
+    }
+    val timelineDurationMs = maxOf(durationMs, audioDurationMs).coerceAtLeast(1L)
     // One shared zoom scale controls the video, ruler, Mute/Cover, Audio and Text tracks.
     var timelineZoom by remember(uri) { mutableFloatStateOf(1f) }
-    val baseTimelineContentWidthDp = (durationMs / 1000f * 22f).coerceAtLeast(120f)
+    val baseTimelineContentWidthDp = (timelineDurationMs / 1000f * 22f).coerceAtLeast(120f)
     val timelineContentWidthDp = baseTimelineContentWidthDp * timelineZoom
     val timelineContentWidthPx = timelineContentWidthDp * androidx.compose.ui.platform.LocalDensity.current.density
     val timelineScrollState = rememberScrollState()
@@ -474,7 +486,10 @@ private fun EditorScreen(
         audioUri?.let { source ->
             ExoPlayer.Builder(context).build().apply {
                 setMediaItem(MediaItem.fromUri(source))
-                repeatMode = ExoPlayer.REPEAT_MODE_ONE
+                // Do not request audio focus: the video player must keep rendering while
+                // this independent music/voice track is mixed into the preview.
+                setAudioAttributes(AudioAttributes.DEFAULT, false)
+                repeatMode = ExoPlayer.REPEAT_MODE_OFF
                 volume = audioVolume
                 prepare()
             }
@@ -487,7 +502,7 @@ private fun EditorScreen(
         }
     }
     LaunchedEffect(playing, audioPlayer) {
-        audioPlayer?.playWhenReady = playing
+        audioPlayer?.playWhenReady = playing && playheadMs < audioDurationMs
     }
     LaunchedEffect(audioPlayer, playheadMs) {
         audioPlayer?.let { track ->
@@ -498,6 +513,18 @@ private fun EditorScreen(
     }
     LaunchedEffect(audioPlayer, audioVolume) {
         audioPlayer?.volume = audioVolume.coerceIn(0f, 1f)
+    }
+    LaunchedEffect(player, videoVolume, clipMuted) {
+        player.volume = if (clipMuted) 0f else videoVolume.coerceIn(0f, 1f)
+    }
+    LaunchedEffect(audioPlayer, playheadMs, audioDurationMs) {
+        audioPlayer?.let { track ->
+            if (audioDurationMs > 0L && playheadMs < audioDurationMs &&
+                kotlin.math.abs(track.currentPosition - playheadMs) > 200L) {
+                track.seekTo(playheadMs.coerceIn(0L, audioDurationMs))
+            }
+            if (playheadMs >= audioDurationMs) track.pause()
+        }
     }
     LaunchedEffect(player) {
         while (true) {
@@ -533,9 +560,9 @@ private fun EditorScreen(
     val timelineViewportWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
         (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 116.dp).toPx()
     }
-    LaunchedEffect(playing, playheadMs, durationMs) {
-        if (playing && durationMs > 0L) {
-            val playheadPx = playheadMs.toFloat() / durationMs.toFloat() * timelineContentWidthPx
+    LaunchedEffect(playing, playheadMs, timelineDurationMs) {
+        if (playing && timelineDurationMs > 0L) {
+            val playheadPx = playheadMs.toFloat() / timelineDurationMs.toFloat() * timelineContentWidthPx
             val targetScroll = (playheadPx - timelineViewportWidthPx / 2f)
                 .toInt().coerceIn(0, timelineScrollState.maxValue)
             timelineScrollState.scrollTo(targetScroll)
@@ -610,17 +637,17 @@ private fun EditorScreen(
             BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                 val rulerWidth = timelineContentWidthDp.dp
                 val stepMs = when {
-                    durationMs <= 20_000L -> 1_000L
-                    durationMs <= 60_000L -> 5_000L
-                    durationMs <= 180_000L -> 10_000L
-                    durationMs <= 600_000L -> 30_000L
+                    timelineDurationMs <= 20_000L -> 1_000L
+                    timelineDurationMs <= 60_000L -> 5_000L
+                    timelineDurationMs <= 180_000L -> 10_000L
+                    timelineDurationMs <= 600_000L -> 30_000L
                     else -> 60_000L
                 }
-                val tickCount = (durationMs / stepMs).toInt().coerceAtMost(120)
+                val tickCount = (timelineDurationMs / stepMs).toInt().coerceAtMost(120)
                 Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }.width(rulerWidth).fillMaxHeight()) {
                     for (tick in 0..tickCount) {
                         val timeMs = tick * stepMs
-                        val fraction = if (durationMs > 0L) timeMs.toFloat() / durationMs.toFloat() else 0f
+                        val fraction = if (timelineDurationMs > 0L) timeMs.toFloat() / timelineDurationMs.toFloat() else 0f
                         Box(
                             Modifier.align(Alignment.TopStart)
                                 .offset(x = rulerWidth * fraction)
@@ -637,7 +664,7 @@ private fun EditorScreen(
                             )
                         }
                     }
-                    val currentFraction = if (durationMs > 0L) (playheadMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    val currentFraction = if (timelineDurationMs > 0L) (playheadMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f) else 0f
                     Box(
                         Modifier.align(Alignment.TopStart)
                             .offset(x = rulerWidth * currentFraction)
@@ -691,7 +718,7 @@ private fun EditorScreen(
                     .pointerInput(durationMs, timelineClips, timelineScrollState.value) {
                         detectTapGestures { tap ->
                             val contentX = (tap.x + timelineScrollState.value).coerceIn(0f, timelineContentWidthPx)
-                            val position = if (timelineContentWidthPx > 0f) (durationMs * (contentX / timelineContentWidthPx)).toLong() else 0L
+                            val position = if (timelineContentWidthPx > 0f) (timelineDurationMs * (contentX / timelineContentWidthPx)).toLong().coerceAtMost(durationMs) else 0L
                             playheadMs = position
                             seekGlobalPosition(player, position, sourceDurations)
                             playing = false
@@ -701,7 +728,7 @@ private fun EditorScreen(
             ) {
                 val timelineWidth = timelineContentWidthDp.dp
                 Box(Modifier.width(timelineWidth).fillMaxHeight()) {
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.width(timelineWidth * (durationMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f)).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
                     timelineClips.forEachIndexed { index, segment ->
                         val segmentFrames = timelineFrames.filterIndexed { frameIndex, _ ->
                             val frameTime = if (timelineFrames.size <= 1) 0L else durationMs * frameIndex / (timelineFrames.size - 1)
@@ -736,7 +763,7 @@ private fun EditorScreen(
                         }
                     }
                     }
-                    val playheadFraction = if (durationMs > 0L) (playheadMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                    val playheadFraction = if (timelineDurationMs > 0L) (playheadMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f) else 0f
                     Box(
                         Modifier.align(Alignment.TopStart)
                             .offset(x = (timelineWidth * playheadFraction) - 1.dp)
@@ -789,12 +816,20 @@ private fun EditorScreen(
                             editTrayOpen = false
                             onTool("Audio clip")
                         }
+                    }) {
+                    if (audioUri == null) {
+                        Text("+ Add audio", color = Muted, fontSize = 11.sp,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 8.dp))
+                    } else {
+                        val audioClipWidth = timelineContentWidthDp * (audioDurationMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f)
+                        Box(Modifier.width(audioClipWidth.dp).fillMaxHeight()
+                            .background(if (activeTool == "Audio clip") Emerald.copy(alpha = .25f) else Panel2, RoundedCornerShape(5.dp))
+                            .border(1.dp, if (activeTool == "Audio clip") Emerald else Color(0xFF267C62), RoundedCornerShape(5.dp))
+                            .padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                            Text("♪ ${audioUri.lastPathSegment ?: "Audio"}  •  ${formatTime(audioDurationMs)}",
+                                color = Green, fontSize = 10.sp, maxLines = 1)
+                        }
                     }
-                    .background(if (activeTool == "Audio clip") Emerald.copy(alpha = .18f) else Panel, RoundedCornerShape(5.dp))
-                    .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart) {
-                    Text(if (audioUri == null) "+ Add audio" else "♪ ${audioUri.lastPathSegment ?: "Audio"}",
-                        color = if (activeTool == "Audio clip") Emerald else if (audioUri == null) Muted else Green, fontSize = 11.sp)
                 }
             }
         }
@@ -865,12 +900,11 @@ private fun EditorScreen(
                 Text("Tap the + box between clips to add or change a transition.", color = Muted, fontSize = 10.sp)
             }
             "Video Volume" -> {
-                var videoVolume by remember(uri) { mutableFloatStateOf(1f) }
                 Text("Video volume", color = Color.White, fontSize = 12.sp)
                 Slider(value = videoVolume, onValueChange = {
-                    videoVolume = it
-                    player.volume = if (clipMuted) 0f else it
-                }, valueRange = 0f..2f,
+                    videoVolume = it.coerceIn(0f, 1f)
+                    player.volume = if (clipMuted) 0f else videoVolume
+                }, valueRange = 0f..1f,
                     colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Emerald))
                 Text("${(videoVolume * 100).toInt()}%", color = Green, fontSize = 11.sp)
             }
