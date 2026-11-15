@@ -830,7 +830,8 @@ private fun EditorScreen(
                     }
             ) {
                 val timelineWidth = timelineContentWidthDp.dp
-                Box(Modifier.width(timelineWidth).fillMaxHeight()) {
+                Box(Modifier.width(timelineWidth).fillMaxHeight()
+                    .background(Panel2, RoundedCornerShape(5.dp))) {
                     Row(Modifier.width(timelineWidth * (durationMs.toFloat() / timelineDurationMs.toFloat()).coerceIn(0f, 1f)).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
                     timelineClips.forEachIndexed { index, segment ->
                         val segmentFrames = timelineFrames.filterIndexed { frameIndex, _ ->
@@ -911,7 +912,8 @@ private fun EditorScreen(
             Box(Modifier.width(48.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+            Box(Modifier.weight(1f).fillMaxHeight()
+                .background(Panel2, RoundedCornerShape(5.dp)).clipToBounds()) {
                 if (audioUri == null) {
                     Text("+ Add audio", color = Muted, fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.CenterStart).clickable { onPickAudio() }.padding(horizontal = 8.dp))
