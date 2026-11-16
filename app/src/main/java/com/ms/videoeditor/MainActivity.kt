@@ -231,26 +231,6 @@ private fun NewEditorScreen(
         undoStack = (undoStack + listOf(timelineClips)).takeLast(50)
         redoStack = emptyList()
     }
-    val performUndo: () -> Unit = {
-        if (undoStack.isNotEmpty()) {
-            redoStack = (redoStack + listOf(timelineClips)).takeLast(50)
-            timelineClips = undoStack.last()
-            undoStack = undoStack.dropLast(1)
-            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
-            isPlaying = false
-            playhead = 0L
-        }
-    }
-    val performRedo: () -> Unit = {
-        if (redoStack.isNotEmpty()) {
-            undoStack = (undoStack + listOf(timelineClips)).takeLast(50)
-            timelineClips = redoStack.last()
-            redoStack = redoStack.dropLast(1)
-            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
-            isPlaying = false
-            playhead = 0L
-        }
-    }
     LaunchedEffect(timelineClips, audioUri) { onTimelineChanged(timelineClips) }
     var lastIncomingClips by remember { mutableStateOf(clips) }
     LaunchedEffect(clips) {
@@ -284,6 +264,26 @@ private fun NewEditorScreen(
     var playhead by remember { mutableLongStateOf(0L) }
     var selectedClip by remember { mutableIntStateOf(0) }
     var selectedTool by remember { mutableStateOf("Edit") }
+    val performUndo: () -> Unit = {
+        if (undoStack.isNotEmpty()) {
+            redoStack = (redoStack + listOf(timelineClips)).takeLast(50)
+            timelineClips = undoStack.last()
+            undoStack = undoStack.dropLast(1)
+            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+            isPlaying = false
+            playhead = 0L
+        }
+    }
+    val performRedo: () -> Unit = {
+        if (redoStack.isNotEmpty()) {
+            undoStack = (undoStack + listOf(timelineClips)).takeLast(50)
+            timelineClips = redoStack.last()
+            redoStack = redoStack.dropLast(1)
+            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+            isPlaying = false
+            playhead = 0L
+        }
+    }
     val scroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
     val trimHandler = rememberUpdatedState<(Int, Boolean, Float) -> Unit>(newValue = { index, trimLeft, dragPx ->
