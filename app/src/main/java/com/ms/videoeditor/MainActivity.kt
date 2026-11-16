@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -664,6 +665,32 @@ private fun EditorScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
+        val editorTools = listOf(
+            "Edit" to Icons.Default.ContentCut,
+            "Audio" to Icons.Default.MusicNote,
+            "Text" to Icons.Default.Title,
+            "Effects" to Icons.Default.AutoAwesome,
+            "Overlay" to Icons.Default.Layers,
+            "Captions" to Icons.Default.ClosedCaption,
+            "Filters" to Icons.Default.FilterVintage,
+            "Adjust" to Icons.Default.Tune,
+            "Stickers" to Icons.Default.EmojiEmotions,
+            "Generate media" to Icons.Default.AutoFixHigh,
+            "AI avatar" to Icons.Default.Face,
+            "Aspect ratio" to Icons.Default.Crop,
+            "Background" to Icons.Default.Wallpaper
+        )
+        val editTools = listOf(
+            "Split", "Animations", "Effects", "Speed", "Volume", "Delete",
+            "AI video", "Crop", "Duplicate", "Replace", "Overlay",
+            "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
+            "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
+            "Opacity", "Motion blur", "Lip sync", "Transform", "Auto reframe",
+            "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
+            "Freeze", "Reverse", "Mask", "Unlink"
+        )
+        // The editor workspace can scroll vertically while the tool strip stays pinned below.
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Close project", tint = Color.White) }
             IconButton(onClick = { onTool("Search") }) { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White) }
@@ -1110,33 +1137,7 @@ private fun EditorScreen(
             }
             else -> { /* Unfinished-tool notices are intentionally hidden. */ }
         }
-        val editorTools = listOf(
-            "Edit" to Icons.Default.ContentCut,
-            "Audio" to Icons.Default.MusicNote,
-            "Text" to Icons.Default.Title,
-            "Effects" to Icons.Default.AutoAwesome,
-            "Overlay" to Icons.Default.Layers,
-            "Captions" to Icons.Default.ClosedCaption,
-            "Filters" to Icons.Default.FilterVintage,
-            "Adjust" to Icons.Default.Tune,
-            "Stickers" to Icons.Default.EmojiEmotions,
-            "Generate media" to Icons.Default.AutoFixHigh,
-            "AI avatar" to Icons.Default.Face,
-            "Aspect ratio" to Icons.Default.Crop,
-            "Background" to Icons.Default.Wallpaper
-        )
-        val editTools = listOf(
-            "Split", "Animations", "Effects", "Speed", "Volume", "Delete",
-            "AI video", "Crop", "Duplicate", "Replace", "Overlay",
-            "Adjust", "Filters", "Retouch", "Video quality", "Remove BG",
-            "AI remove", "AI expand", "AI remix", "AI extend", "Relight",
-            "Opacity", "Motion blur", "Lip sync", "Transform", "Auto reframe",
-            "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
-            "Freeze", "Reverse", "Mask", "Unlink"
-        )
-        // Consume the remaining vertical space so the editing toolbar sits at the bottom,
-        // removing the unused black gap beneath it without changing the preview or timeline.
-        Spacer(Modifier.weight(1f))
+        }
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
         if (selectedTrack == "audio" && audioUri != null && (activeTool == "Audio clip" || activeTool.startsWith("Audio "))) {
