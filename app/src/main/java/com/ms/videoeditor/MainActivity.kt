@@ -57,6 +57,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 
 private val Black = Color(0xFF050807)
 private val Panel = Color(0xFF111816)
@@ -423,6 +424,11 @@ private fun EditorScreen(
     var audioVolume by remember(audioUri) { mutableFloatStateOf(1f) }
     var videoVolume by remember(uri) { mutableFloatStateOf(1f) }
     var previewZoom by remember(uri) { mutableFloatStateOf(1f) }
+    // Step 1: selected preview object transform and its visible selection frame.
+    var previewObjectSelected by remember(uri) { mutableStateOf(true) }
+    var objectScale by remember(uri) { mutableFloatStateOf(1f) }
+    var objectTranslationX by remember(uri) { mutableFloatStateOf(0f) }
+    var objectTranslationY by remember(uri) { mutableFloatStateOf(0f) }
     val sourceDurations = remember(videoUris) {
         videoUris.map { source ->
             try {
@@ -727,16 +733,56 @@ private fun EditorScreen(
             }, modifier = Modifier.fillMaxSize().graphicsLayer {
                     val pulse = if (transitionProgress < .5f) transitionProgress * 2f else (1f - transitionProgress) * 2f
                     val transitionZoom = if (previewTransition?.value == "Zoom") 1f + pulse * .22f else 1f
-                    scaleX = previewZoom * transitionZoom
-                    scaleY = previewZoom * transitionZoom
+                    scaleX = previewZoom * transitionZoom * objectScale
+                    scaleY = previewZoom * transitionZoom * objectScale
+                    translationX = objectTranslationX
+                    translationY = objectTranslationY
                     if (previewTransition?.value == "Slide") {
-                        translationX = (if (transitionProgress < .5f) 1f else -1f) *
+                        translationX += (if (transitionProgress < .5f) 1f else -1f) *
                             (1f - pulse) * size.width * .18f
                     }
                 })
             if (overlayText.isNotBlank()) {
                 Text(overlayText, color = Color.White, fontSize = 24.sp,
                     modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .28f), RoundedCornerShape(5.dp)).padding(8.dp))
+            }
+            if (previewObjectSelected) {
+                // White selection frame. Drag inside it to move; drag the lower-right
+                // handle with one finger to resize the selected preview object.
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .size(width = 240.dp, height = 135.dp)
+                        .graphicsLayer {
+                            scaleX = objectScale
+                            scaleY = objectScale
+                            translationX = objectTranslationX
+                            translationY = objectTranslationY
+                        }
+                        .border(1.5.dp, Color.White, RoundedCornerShape(1.dp))
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                objectTranslationX += dragAmount.x
+                                objectTranslationY += dragAmount.y
+                            }
+                        }
+                ) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 9.dp, y = 9.dp)
+                            .size(22.dp)
+                            .background(Color.White, RoundedCornerShape(3.dp))
+                            .pointerInput(objectScale) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = (dragAmount.x + dragAmount.y) / 260f
+                                    objectScale = (objectScale + delta).coerceIn(0.2f, 4f)
+                                }
+                            }
+                    )
+                }
             }
         }
         Row(Modifier.fillMaxWidth().height(48.dp).background(Panel), verticalAlignment = Alignment.CenterVertically,
