@@ -219,7 +219,7 @@ private fun MSVideoEditorApp() {
                         prefs.edit().remove("active_audio_uri").apply()
                     },
                     onExport = { startMs, endMs ->
-                        exportTrimmedVideo(context, videoUri!!, startMs, endMs) { _, message ->
+                        exportVideoSequence(context, videoUris.ifEmpty { listOf(videoUri!!) }, startMs, endMs) { success, message ->
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                         }
                     },
