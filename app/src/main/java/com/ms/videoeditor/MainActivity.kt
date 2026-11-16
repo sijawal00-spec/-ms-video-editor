@@ -937,31 +937,23 @@ private fun EditorScreen(
                 }
             }
         }
-        // Audio label stays fixed while its clip content follows the exact same horizontal
-        // scroll offset as the ruler and video track, so the audio row cannot scroll away.
+        // Audio label and clip area move together with the shared timeline scroll.
         Row(
             Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp)
-                .pointerInput(timelineScrollState) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        change.consume()
-                        timelineScrollState.dispatchRawDelta(-dragAmount)
-                    }
-                },
+                .horizontalScroll(timelineScrollState),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.width(48.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.MusicNote, contentDescription = "Audio track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            // Keep the audio content origin identical to the video timeline's 96dp left gutter.
             Spacer(Modifier.width(48.dp))
-            Box(Modifier.weight(1f).fillMaxHeight()
+            Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()
                 .background(Panel2, RoundedCornerShape(5.dp)).clipToBounds()) {
                 if (audioUri == null) {
                     Text("+ Add audio", color = Muted, fontSize = 11.sp,
                         modifier = Modifier.align(Alignment.CenterStart).clickable { onPickAudio() }.padding(horizontal = 8.dp))
                 } else {
-                    Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
-                        .width(timelineContentWidthDp.dp).fillMaxHeight()) {
+                    Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight()) {
                         audioClips.forEachIndexed { index, clip ->
                             val left = timelineContentWidthDp * (clip.timelineStartMs.toFloat() / timelineDurationMs.toFloat())
                             val clipWidth = (timelineContentWidthDp * (clip.durationMs.toFloat() / timelineDurationMs.toFloat())).coerceAtLeast(20f)
@@ -994,22 +986,17 @@ private fun EditorScreen(
                 }
             }
         }
+        // Text label and content move together with the shared timeline scroll.
         Row(
             Modifier.fillMaxWidth().height(32.dp).padding(top = 2.dp)
-                .pointerInput(timelineScrollState) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        change.consume()
-                        timelineScrollState.dispatchRawDelta(-dragAmount)
-                    }
-                },
+                .horizontalScroll(timelineScrollState),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.width(96.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Title, contentDescription = "Text track", tint = Muted, modifier = Modifier.size(18.dp))
             }
-            Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-                Box(Modifier.offset { IntOffset(-timelineScrollState.value, 0) }
-                    .width(timelineContentWidthDp.dp).fillMaxHeight()
+            Box(Modifier.width(timelineContentWidthDp.dp).fillMaxHeight().clipToBounds()) {
+                Box(Modifier.fillMaxSize()
                     .background(Panel, RoundedCornerShape(5.dp))
                     .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.CenterStart) {
