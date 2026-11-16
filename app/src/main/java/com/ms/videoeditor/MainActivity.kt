@@ -73,6 +73,7 @@ private fun MSVideoEditorApp() {
         NewEditorScreen(
             clips = clips,
             audioUri = audioUri,
+            onClipsChanged = { clips = it },
             onBack = { editorOpen = false },
             onAddVideo = { videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
             onAddAudio = { audioPicker.launch("audio/*") },
@@ -151,14 +152,16 @@ private fun HomeScreen(projectName: String, onNewProject: () -> Unit, onOpenRece
 private fun NewEditorScreen(
     clips: List<Uri>,
     audioUri: Uri?,
+    onClipsChanged: (List<Uri>) -> Unit,
     onBack: () -> Unit,
     onAddVideo: () -> Unit,
     onAddAudio: () -> Unit,
     onExport: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val durations = remember(clips) {
-        clips.map { uri ->
+    var timelineClips by remember(clips) { mutableStateOf(clips) }
+    val durations = remember(timelineClips) {
+        timelineClips.map { uri ->
             runCatching {
                 val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(context, uri)
@@ -169,9 +172,9 @@ private fun NewEditorScreen(
         }
     }
     val totalDuration = durations.sum().coerceAtLeast(1L)
-    val player = remember(clips) {
+    val player = remember(timelineClips) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItems(clips.map { MediaItem.fromUri(it) })
+            setMediaItems(timelineClips.map { MediaItem.fromUri(it) })
             prepare()
             playWhenReady = false
         }
@@ -201,7 +204,7 @@ private fun NewEditorScreen(
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
             Column(Modifier.weight(1f)) {
                 Text("MS Video Editor", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("Project • ${clips.size} clips", color = Soft, fontSize = 10.sp)
+                Text("Project • ${timelineClips.size} clips", color = Soft, fontSize = 10.sp)
             }
             TextButton(onClick = onExport) { Text("Export", color = Neon, fontWeight = FontWeight.Bold) }
         }
@@ -247,7 +250,7 @@ private fun NewEditorScreen(
         Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("VIDEO", color = Soft, fontSize = 9.sp, modifier = Modifier.width(54.dp), textAlign = TextAlign.Center)
             Row(Modifier.weight(1f).horizontalScroll(scroll).height(70.dp), verticalAlignment = Alignment.CenterVertically) {
-                clips.forEachIndexed { index, uri ->
+                timelineClips.forEachIndexed { index, uri ->
                     val thumb = remember(uri) { loadFrame(context, uri) }
                     Box(
                         Modifier.width((timelineWidth * (durations[index].coerceAtLeast(1L).toFloat() / totalDuration)).coerceAtLeast(100f).dp)
@@ -289,7 +292,20 @@ private fun NewEditorScreen(
                     selectedTool = name
                     when (name) {
                         "Split" -> Toast.makeText(context, "Split point selected at ${formatMs(playhead)}. Clip edit operation is being implemented.", Toast.LENGTH_SHORT).show()
-                        "Delete" -> Toast.makeText(context, "Select a clip before deleting.", Toast.LENGTH_SHORT).show()
+                        "Delete" -> {
+                            if (timelineClips.size <= 1) {
+                                Toast.makeText(context, "At least one video clip must remain in the project.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val next = timelineClips.toMutableList().also { it.removeAt(selectedClip.coerceIn(0, it.lastIndex)) }
+                                val nextSelected = (selectedClip - 1).coerceAtLeast(0).coerceAtMost(next.lastIndex)
+                                timelineClips = next
+                                onClipsChanged(next)
+                                selectedClip = nextSelected
+                                playhead = durations.take(nextSelected).sum()
+                                isPlaying = false
+                                Toast.makeText(context, "Selected clip deleted from timeline.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         else -> Toast.makeText(context, "$name tool selected.", Toast.LENGTH_SHORT).show()
                     }
                 }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
