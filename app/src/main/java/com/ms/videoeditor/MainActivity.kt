@@ -41,10 +41,48 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import android.media.MediaMetadataRetriever
 import android.graphics.Bitmap
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.delay
 
 
 private data class EditorClip(val uri: Uri, val sourceStartMs: Long, val sourceEndMs: Long, val sourceDurationMs: Long = sourceEndMs)
+
+private const val PROJECT_PREFS = "ms_video_editor_project"
+private const val PROJECT_DATA = "timeline_json"
+
+private fun loadSavedTimeline(context: android.content.Context): List<EditorClip> = runCatching {
+    val raw = context.getSharedPreferences(PROJECT_PREFS, android.content.Context.MODE_PRIVATE).getString(PROJECT_DATA, null) ?: return emptyList()
+    val array = JSONArray(raw)
+    buildList {
+        for (i in 0 until array.length()) {
+            val item = array.getJSONObject(i)
+            val uri = Uri.parse(item.getString("uri"))
+            val start = item.optLong("start", 0L)
+            val end = item.optLong("end", 1L)
+            val duration = item.optLong("duration", end).coerceAtLeast(end)
+            if (end > start) add(EditorClip(uri, start, end, duration))
+        }
+    }
+}.getOrDefault(emptyList())
+
+private fun saveProject(context: android.content.Context, timeline: List<EditorClip>, audioUri: Uri?, projectName: String) {
+    runCatching {
+        val array = JSONArray()
+        timeline.forEach { clip ->
+            array.put(JSONObject().put("uri", clip.uri.toString()).put("start", clip.sourceStartMs).put("end", clip.sourceEndMs).put("duration", clip.sourceDurationMs))
+        }
+        context.getSharedPreferences(PROJECT_PREFS, android.content.Context.MODE_PRIVATE).edit()
+            .putString(PROJECT_DATA, array.toString())
+            .putString("audio_uri", audioUri?.toString())
+            .putString("project_name", projectName)
+            .apply()
+    }
+}
+
+private fun loadSavedAudioUri(context: android.content.Context): Uri? = runCatching {
+    context.getSharedPreferences(PROJECT_PREFS, android.content.Context.MODE_PRIVATE).getString("audio_uri", null)?.let(Uri::parse)
+}.getOrNull()
 
 private fun readVideoDuration(context: android.content.Context, uri: Uri): Long {
     return runCatching {
@@ -73,15 +111,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MSVideoEditorApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var clips by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var audioUri by remember { mutableStateOf<Uri?>(null) }
+    var savedTimeline by remember { mutableStateOf(loadSavedTimeline(context)) }
+    var clips by remember { mutableStateOf(savedTimeline.map { it.uri }) }
+    var audioUri by remember { mutableStateOf(loadSavedAudioUri(context)) }
     var editorOpen by remember { mutableStateOf(false) }
-    var projectName by remember { mutableStateOf("New project") }
+    var projectName by remember { mutableStateOf(context.getSharedPreferences(PROJECT_PREFS, android.content.Context.MODE_PRIVATE).getString("project_name", "New project") ?: "New project") }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { picked ->
         if (picked.isNotEmpty()) {
-            clips = if (editorOpen) clips + picked else picked
+            picked.forEach { uri -> runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+            if (editorOpen) {
+                clips = clips + picked
+            } else {
+                clips = picked
+                savedTimeline = picked.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) }
+                projectName = "Untitled project"
+            }
             editorOpen = true
-            projectName = if (editorOpen) projectName else "Untitled project"
         }
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked -> audioUri = picked }
@@ -89,8 +134,10 @@ private fun MSVideoEditorApp() {
         NewEditorScreen(
             clips = clips,
             audioUri = audioUri,
+            initialTimeline = savedTimeline,
+            onTimelineChanged = { updated -> savedTimeline = updated; saveProject(context, updated, audioUri, projectName) },
             onClipsChanged = { clips = it },
-            onBack = { editorOpen = false },
+            onBack = { saveProject(context, savedTimeline, audioUri, projectName); editorOpen = false },
             onAddVideo = { videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
             onAddAudio = { audioPicker.launch("audio/*") },
             onExport = { Toast.makeText(context, "Export module will be connected after timeline editing is completed.", Toast.LENGTH_LONG).show() }
@@ -168,6 +215,8 @@ private fun HomeScreen(projectName: String, onNewProject: () -> Unit, onOpenRece
 private fun NewEditorScreen(
     clips: List<Uri>,
     audioUri: Uri?,
+    initialTimeline: List<EditorClip>,
+    onTimelineChanged: (List<EditorClip>) -> Unit,
     onClipsChanged: (List<Uri>) -> Unit,
     onBack: () -> Unit,
     onAddVideo: () -> Unit,
@@ -175,7 +224,8 @@ private fun NewEditorScreen(
     onExport: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var timelineClips by remember { mutableStateOf(clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) }) }
+    var timelineClips by remember { mutableStateOf(initialTimeline.ifEmpty { clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) } }) }
+    LaunchedEffect(timelineClips, audioUri) { onTimelineChanged(timelineClips) }
     var lastIncomingClips by remember { mutableStateOf(clips) }
     LaunchedEffect(clips) {
         val previous = lastIncomingClips
