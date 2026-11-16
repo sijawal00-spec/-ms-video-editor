@@ -600,8 +600,9 @@ private fun EditorScreen(
         } else {
             val updated = timelineClips.toMutableList()
             updated.removeAt(index)
-            updated.add(index, TimelineClip(position, clip.endMs))
+            // Keep the left segment before the right segment on the timeline.
             updated.add(index, TimelineClip(clip.startMs, position))
+            updated.add(index + 1, TimelineClip(position, clip.endMs))
             timelineClips = updated
             selectedClipIndex = index + 1
             seekGlobalPosition(player, position.coerceAtMost(durationMs), sourceDurations)
