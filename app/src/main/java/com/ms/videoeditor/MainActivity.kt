@@ -417,6 +417,7 @@ private fun EditorScreen(
     var editTrayOpen by remember { mutableStateOf(false) }
     var clipSelected by remember(uri) { mutableStateOf(false) }
     var selectedTrack by remember(uri) { mutableStateOf("video") }
+    var selectedLayerTrack by remember(uri) { mutableStateOf("pip") }
     var clipMuted by remember(uri) { mutableStateOf(false) }
     var audioVolume by remember(audioUri) { mutableFloatStateOf(1f) }
     var videoVolume by remember(uri) { mutableFloatStateOf(1f) }
@@ -988,6 +989,52 @@ private fun EditorScreen(
                 }
             }
         }
+        // Additional synchronized layers share the ruler width, zoom and scroll.
+        LayerTrackRow(
+            label = "PIP",
+            icon = Icons.Default.Layers,
+            contentWidthDp = timelineContentWidthDp,
+            scrollState = timelineScrollState,
+            selected = selectedLayerTrack == "pip",
+            onSelect = { selectedLayerTrack = "pip"; onTool("Overlay") },
+            onAdd = { selectedLayerTrack = "pip"; onTool("Overlay") }
+        )
+        LayerTrackRow(
+            label = "Stickers",
+            icon = Icons.Default.EmojiEmotions,
+            contentWidthDp = timelineContentWidthDp,
+            scrollState = timelineScrollState,
+            selected = selectedLayerTrack == "stickers",
+            onSelect = { selectedLayerTrack = "stickers"; onTool("Stickers") },
+            onAdd = { selectedLayerTrack = "stickers"; onTool("Stickers") }
+        )
+        LayerTrackRow(
+            label = "Effects",
+            icon = Icons.Default.AutoAwesome,
+            contentWidthDp = timelineContentWidthDp,
+            scrollState = timelineScrollState,
+            selected = selectedLayerTrack == "effects",
+            onSelect = { selectedLayerTrack = "effects"; onTool("Effects") },
+            onAdd = { selectedLayerTrack = "effects"; onTool("Effects") }
+        )
+        LayerTrackRow(
+            label = "Audio FX",
+            icon = Icons.Default.GraphicEq,
+            contentWidthDp = timelineContentWidthDp,
+            scrollState = timelineScrollState,
+            selected = selectedLayerTrack == "audio_fx",
+            onSelect = { selectedLayerTrack = "audio_fx"; onTool("Audio") },
+            onAdd = { selectedLayerTrack = "audio_fx"; onTool("Audio") }
+        )
+        LayerTrackRow(
+            label = "Adjust",
+            icon = Icons.Default.Tune,
+            contentWidthDp = timelineContentWidthDp,
+            scrollState = timelineScrollState,
+            selected = selectedLayerTrack == "adjust",
+            onSelect = { selectedLayerTrack = "adjust"; onTool("Adjust") },
+            onAdd = { selectedLayerTrack = "adjust"; onTool("Adjust") }
+        )
         when (activeTool) {
             "Trim" -> {
                 if (durationMs > 0L) {
