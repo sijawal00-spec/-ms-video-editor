@@ -1053,6 +1053,48 @@ private fun EditorScreen(
             onAdd = { selectedLayerTrack = "adjust"; onTool("Adjust") }
         )
         }
+        // CapCut-inspired contextual timeline toolbar: visual layout only; each item opens its existing tool route.
+        val timelineToolbarItems = listOf(
+            "Split" to Icons.Default.ContentCut,
+            "Delete" to Icons.Default.Delete,
+            "Speed" to Icons.Default.Speed,
+            "Volume" to Icons.Default.VolumeUp,
+            "Crop" to Icons.Default.Crop,
+            "Effects" to Icons.Default.AutoAwesome,
+            "Filters" to Icons.Default.FilterVintage,
+            "Overlay" to Icons.Default.Layers,
+            "More" to Icons.Default.MoreHoriz
+        )
+        Row(
+            Modifier.fillMaxWidth().height(76.dp)
+                .background(Color(0xFF03140D), RoundedCornerShape(16.dp))
+                .border(1.dp, Green, RoundedCornerShape(16.dp))
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 5.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            timelineToolbarItems.forEach { (toolName, toolIcon) ->
+                Column(
+                    Modifier.width(76.dp).fillMaxHeight()
+                        .clickable {
+                            when (toolName) {
+                                "Split" -> splitAtPlayhead()
+                                "Delete" -> onTool("Delete")
+                                "More" -> onTool("Edit")
+                                else -> onTool(toolName)
+                            }
+                        }
+                        .padding(horizontal = 3.dp, vertical = 3.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(toolIcon, contentDescription = toolName, tint = Color.White, modifier = Modifier.size(23.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text(toolName, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         when (activeTool) {
             "Trim" -> {
                 if (durationMs > 0L) {
