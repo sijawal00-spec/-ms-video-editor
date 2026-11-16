@@ -3,7 +3,7 @@ package com.ms.videoeditor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -14,16 +14,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.ScrollState
 
 /**
- * Fixed track label with a horizontally draggable content viewport.
- * The content starts after the same 96dp leading area used by the main
- * video lane, then follows the editor's shared ScrollState.
+ * Track label and clip area move together horizontally using the editor's
+ * shared ScrollState, matching the ruler and main video lane.
  */
 @Composable
 internal fun LayerTrackRow(
@@ -37,7 +34,7 @@ internal fun LayerTrackRow(
 ) {
     val laneColor = if (selected) Color(0xFF123D30) else Color(0xFF111816)
     Row(
-        Modifier.fillMaxWidth().height(42.dp),
+        Modifier.fillMaxWidth().height(42.dp).horizontalScroll(scrollState),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
@@ -66,26 +63,15 @@ internal fun LayerTrackRow(
             )
         }
         Box(
-            Modifier.weight(1f).fillMaxHeight().clipToBounds()
+            Modifier.width(contentWidthDp.dp).fillMaxHeight().clipToBounds()
                 .background(laneColor, RoundedCornerShape(5.dp))
                 .border(
                     width = if (selected) 1.dp else 0.dp,
                     color = if (selected) Color(0xFF00D889) else Color.Transparent,
                     shape = RoundedCornerShape(5.dp)
                 )
-                .pointerInput(scrollState) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        change.consume()
-                        scrollState.dispatchRawDelta(-dragAmount)
-                    }
-                }
                 .clickable { onSelect() }
         ) {
-            Box(
-                Modifier.offset {
-                    IntOffset(96.dp.roundToPx() - scrollState.value, 0)
-                }.width(contentWidthDp.dp).fillMaxHeight()
-            ) {
                 Row(
                     Modifier.align(Alignment.CenterStart)
                         .padding(start = 9.dp)
