@@ -201,6 +201,7 @@ private fun NewEditorScreen(
         }
     }
     LaunchedEffect(isPlaying) { player.playWhenReady = isPlaying }
+    LaunchedEffect(player, selectedClip) { if (selectedClip in timelineClips.indices) player.seekTo(selectedClip, 0L) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(horizontal = 10.dp)) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -302,7 +303,6 @@ private fun NewEditorScreen(
                                 val next = timelineClips.toMutableList().also { it.removeAt(selectedClip.coerceIn(0, it.lastIndex)) }
                                 val nextSelected = (selectedClip - 1).coerceAtLeast(0).coerceAtMost(next.lastIndex)
                                 timelineClips = next
-                                onClipsChanged(next.map { it.uri })
                                 selectedClip = nextSelected
                                 playhead = durations.take(nextSelected).sum()
                                 isPlaying = false
