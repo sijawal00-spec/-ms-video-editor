@@ -2,6 +2,7 @@ package com.ms.videoeditor
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
@@ -40,7 +41,7 @@ fun exportTrimmedVideo(
     startCompositionExport(
         context = context,
         composition = Composition.Builder(
-            EditedMediaItemSequence.withAudioAndVideoFrom(listOf(editedItem))
+            EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_VIDEO))\n                .addItem(editedItem)\n                .build()
         ).build(),
         outputFile = outputFile,
         successMessage = "Trimmed video saved inside MS Video Editor. It was not added to Gallery.",
@@ -112,7 +113,7 @@ fun exportVideoSequence(
     }
 
     val outputFile = File(context.cacheDir, "ms_sequence_${System.currentTimeMillis()}.mp4")
-    val sequence = EditedMediaItemSequence.withAudioAndVideoFrom(editedItems)
+    val sequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_VIDEO))\n        .addItems(editedItems)\n        .build()
     val composition = Composition.Builder(sequence).build()
     startCompositionExport(
         context = context,
