@@ -460,6 +460,7 @@ private fun EditorScreen(
     val timelineContentWidthDp = baseTimelineContentWidthDp * timelineZoom
     val timelineContentWidthPx = timelineContentWidthDp * androidx.compose.ui.platform.LocalDensity.current.density
     val timelineScrollState = rememberScrollState()
+    val timelineVerticalScrollState = rememberScrollState()
     var timelineClips by remember(videoUris, sourceDurations) {
         var cursor = 0L
         mutableStateOf(sourceDurations.mapNotNull { itemDuration ->
@@ -689,8 +690,7 @@ private fun EditorScreen(
             "Stabilize", "Camera tracking", "Isolate voice", "Enhance voice",
             "Freeze", "Reverse", "Mask", "Unlink"
         )
-        // The editor workspace can scroll vertically while the tool strip stays pinned below.
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+        // Keep the editor header and preview fixed; only the timeline lanes scroll vertically.
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Close project", tint = Color.White) }
             IconButton(onClick = { onTool("Search") }) { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White) }
@@ -761,6 +761,8 @@ private fun EditorScreen(
                 seekRevision++
             }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
         }
+        // All timeline lanes, including their left labels, move together vertically.
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(timelineVerticalScrollState)) {
         Row(Modifier.fillMaxWidth().height(28.dp).padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(formatTime(playheadMs), color = Green, fontSize = 10.sp, modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text("/", color = Muted, fontSize = 9.sp)
@@ -1062,6 +1064,7 @@ private fun EditorScreen(
             onSelect = { selectedLayerTrack = "adjust"; onTool("Adjust") },
             onAdd = { selectedLayerTrack = "adjust"; onTool("Adjust") }
         )
+        }
         when (activeTool) {
             "Trim" -> {
                 if (durationMs > 0L) {
@@ -1136,7 +1139,6 @@ private fun EditorScreen(
                 // Audio actions are provided in the bottom Audio tray.
             }
             else -> { /* Unfinished-tool notices are intentionally hidden. */ }
-        }
         }
         // The same bottom toolbar switches between the main tools and the Edit tools.
         // This avoids rendering a duplicate tool strip.
