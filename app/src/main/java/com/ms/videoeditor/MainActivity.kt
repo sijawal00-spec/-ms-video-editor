@@ -15,6 +15,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToLong
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,7 +44,7 @@ import android.graphics.Bitmap
 import kotlinx.coroutines.delay
 
 
-private data class EditorClip(val uri: Uri, val sourceStartMs: Long, val sourceEndMs: Long)
+private data class EditorClip(val uri: Uri, val sourceStartMs: Long, val sourceEndMs: Long, val sourceDurationMs: Long = sourceEndMs)
 
 private fun readVideoDuration(context: android.content.Context, uri: Uri): Long {
     return runCatching {
@@ -172,7 +175,7 @@ private fun NewEditorScreen(
     onExport: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var timelineClips by remember(clips) { mutableStateOf(clips.map { uri -> EditorClip(uri, 0L, readVideoDuration(context, uri)) }) }
+    var timelineClips by remember(clips) { mutableStateOf(clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) }) }
     val durations = remember(timelineClips) { timelineClips.map { (it.sourceEndMs - it.sourceStartMs).coerceAtLeast(1L) } }
     val totalDuration = durations.sum().coerceAtLeast(1L)
     val player = remember(timelineClips) {
@@ -188,6 +191,25 @@ private fun NewEditorScreen(
     var selectedTool by remember { mutableStateOf("Edit") }
     val scroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val trimHandler = rememberUpdatedState<(Int, Boolean, Float) -> Unit>(newValue = { index, trimLeft, dragPx ->
+        val current = timelineClips.getOrNull(index)
+        if (current != null) {
+            val deltaMs = (dragPx / density.density / 48f * 1000f).roundToLong()
+            val minimumDuration = 500L
+            val updated = if (trimLeft) {
+                current.copy(sourceStartMs = (current.sourceStartMs + deltaMs).coerceIn(0L, current.sourceEndMs - minimumDuration))
+            } else {
+                current.copy(sourceEndMs = (current.sourceEndMs + deltaMs).coerceIn(current.sourceStartMs + minimumDuration, current.sourceDurationMs))
+            }
+            if (updated != current) {
+                timelineClips = timelineClips.toMutableList().also { it[index] = updated }
+                if (index == selectedClip) {
+                    isPlaying = false
+                    player.seekTo(index, 0L)
+                }
+            }
+        }
+    })
     val timelineWidth = (totalDuration / 1000f * 48f).coerceAtLeast(420f)
     DisposableEffect(player) { onDispose { player.release() } }
     LaunchedEffect(player, isPlaying, durations) {
@@ -275,6 +297,30 @@ private fun NewEditorScreen(
                     ) {
                         if (thumb != null) Image(thumb.asImageBitmap(), contentDescription = "Clip thumbnail", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
                         Text("Clip ${index + 1}", color = Color.White, fontSize = 9.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color.Black.copy(alpha = .6f)).padding(4.dp))
+                        if (selectedClip == index) {
+                            Box(
+                                Modifier.align(Alignment.CenterStart).width(14.dp).fillMaxHeight()
+                                    .background(Gold.copy(alpha = .95f))
+                                    .pointerInput(index) {
+                                        detectDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            trimHandler.value(index, true, dragAmount.x)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) { Box(Modifier.width(3.dp).height(24.dp).background(Bg, RoundedCornerShape(2.dp))) }
+                            Box(
+                                Modifier.align(Alignment.CenterEnd).width(14.dp).fillMaxHeight()
+                                    .background(Gold.copy(alpha = .95f))
+                                    .pointerInput(index) {
+                                        detectDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            trimHandler.value(index, false, dragAmount.x)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) { Box(Modifier.width(3.dp).height(24.dp).background(Bg, RoundedCornerShape(2.dp))) }
+                        }
                     }
                 }
                 Box(Modifier.width(42.dp).fillMaxHeight().clip(RoundedCornerShape(7.dp)).background(TrackDark).clickable { onAddVideo() }, contentAlignment = Alignment.Center) {
@@ -295,7 +341,7 @@ private fun NewEditorScreen(
                 Column(Modifier.width(72.dp).fillMaxHeight().clickable {
                     selectedTool = name
                     when (name) {
-                        "Split" -> { val clipStart = durations.take(selectedClip).sum(); val clip = timelineClips.getOrNull(selectedClip); val splitOffset = playhead - clipStart; if (clip == null || splitOffset <= 0L || splitOffset >= durations[selectedClip]) { Toast.makeText(context, "Move the playhead inside the selected clip to split it.", Toast.LENGTH_SHORT).show() } else { val sourceSplit = clip.sourceStartMs + splitOffset; val next = timelineClips.toMutableList().also { it[selectedClip] = clip.copy(sourceEndMs = sourceSplit); it.add(selectedClip + 1, clip.copy(sourceStartMs = sourceSplit)) }; timelineClips = next; onClipsChanged(next.map { it.uri }); selectedClip += 1; isPlaying = false; Toast.makeText(context, "Clip split into two timeline segments.", Toast.LENGTH_SHORT).show() } }
+                        "Split" -> { val clipStart = durations.take(selectedClip).sum(); val clip = timelineClips.getOrNull(selectedClip); val splitOffset = playhead - clipStart; if (clip == null || splitOffset <= 0L || splitOffset >= durations[selectedClip]) { Toast.makeText(context, "Move the playhead inside the selected clip to split it.", Toast.LENGTH_SHORT).show() } else { val sourceSplit = clip.sourceStartMs + splitOffset; val next = timelineClips.toMutableList().also { it[selectedClip] = clip.copy(sourceEndMs = sourceSplit); it.add(selectedClip + 1, clip.copy(sourceStartMs = sourceSplit)) }; timelineClips = next; selectedClip += 1; isPlaying = false; Toast.makeText(context, "Clip split into two timeline segments.", Toast.LENGTH_SHORT).show() } }
                         "Delete" -> {
                             if (timelineClips.size <= 1) {
                                 Toast.makeText(context, "At least one video clip must remain in the project.", Toast.LENGTH_SHORT).show()
