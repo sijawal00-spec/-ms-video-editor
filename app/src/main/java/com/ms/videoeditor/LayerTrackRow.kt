@@ -2,16 +2,10 @@ package com.ms.videoeditor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.EmojiEmotions
-import androidx.compose.material.icons.filled.FilterVintage
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,12 +19,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.ScrollState
-import kotlin.math.roundToInt
 
 /**
- * Additional synchronized timeline lane. The lane shares the editor's horizontal
- * scroll offset and zoom width; content creation is routed to the corresponding
- * editor tool rather than displaying a fake clip.
+ * Additional synchronized timeline lane. It shares the editor's horizontal
+ * scroll offset and zoom width. Add actions open the corresponding editor tool.
  */
 @Composable
 internal fun LayerTrackRow(
@@ -87,6 +79,7 @@ internal fun LayerTrackRow(
                 .fillMaxHeight()
                 .clipToBounds()
                 .background(laneColor, RoundedCornerShape(5.dp))
+                .clickable { onSelect() }
                 .border(
                     width = if (selected) 1.dp else 0.dp,
                     color = if (selected) Color(0xFF00D889) else Color.Transparent,
@@ -104,6 +97,7 @@ internal fun LayerTrackRow(
                         .align(Alignment.CenterStart)
                         .padding(start = 8.dp)
                         .background(Color(0xFF19231F), RoundedCornerShape(5.dp))
+                        .clickable { onAdd() }
                         .padding(horizontal = 7.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -115,10 +109,6 @@ internal fun LayerTrackRow(
                     )
                 }
             }
-            androidx.compose.foundation.clickable(
-                indication = null,
-                interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource()
-            ) { onSelect() }
         }
     }
 }
