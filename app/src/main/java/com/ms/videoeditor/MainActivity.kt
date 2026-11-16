@@ -225,6 +225,32 @@ private fun NewEditorScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var timelineClips by remember { mutableStateOf(initialTimeline.ifEmpty { clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) } }) }
+    var undoStack by remember { mutableStateOf<List<List<EditorClip>>>(emptyList()) }
+    var redoStack by remember { mutableStateOf<List<List<EditorClip>>>(emptyList()) }
+    val recordUndo: () -> Unit = {
+        undoStack = (undoStack + listOf(timelineClips)).takeLast(50)
+        redoStack = emptyList()
+    }
+    val performUndo: () -> Unit = {
+        if (undoStack.isNotEmpty()) {
+            redoStack = (redoStack + listOf(timelineClips)).takeLast(50)
+            timelineClips = undoStack.last()
+            undoStack = undoStack.dropLast(1)
+            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+            isPlaying = false
+            playhead = 0L
+        }
+    }
+    val performRedo: () -> Unit = {
+        if (redoStack.isNotEmpty()) {
+            undoStack = (undoStack + listOf(timelineClips)).takeLast(50)
+            timelineClips = redoStack.last()
+            redoStack = redoStack.dropLast(1)
+            selectedClip = selectedClip.coerceIn(0, (timelineClips.size - 1).coerceAtLeast(0))
+            isPlaying = false
+            playhead = 0L
+        }
+    }
     LaunchedEffect(timelineClips, audioUri) { onTimelineChanged(timelineClips) }
     var lastIncomingClips by remember { mutableStateOf(clips) }
     LaunchedEffect(clips) {
@@ -239,6 +265,7 @@ private fun NewEditorScreen(
                 val duration = readVideoDuration(context, uri)
                 EditorClip(uri, 0L, duration, duration)
             }
+            recordUndo()
             timelineClips = timelineClips + newSegments
             Toast.makeText(context, "${newSegments.size} video clip(s) added to timeline.", Toast.LENGTH_SHORT).show()
         }
@@ -312,8 +339,8 @@ private fun NewEditorScreen(
                 modifier = Modifier.align(Alignment.BottomStart).padding(10.dp).background(Color.Black.copy(alpha = .55f), RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 4.dp))
         }
         Row(Modifier.fillMaxWidth().height(48.dp).background(SurfaceDark, RoundedCornerShape(12.dp)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-            IconButton(onClick = { Toast.makeText(context, "Undo history will be added with edit operations.", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White) }
-            IconButton(onClick = { Toast.makeText(context, "Redo history will be added with edit operations.", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = Color.White) }
+            IconButton(onClick = performUndo, enabled = undoStack.isNotEmpty()) { Icon(Icons.Default.Undo, contentDescription = "Undo", tint = if (undoStack.isNotEmpty()) Color.White else Soft.copy(alpha = .35f)) }
+            IconButton(onClick = performRedo, enabled = redoStack.isNotEmpty()) { Icon(Icons.Default.Redo, contentDescription = "Redo", tint = if (redoStack.isNotEmpty()) Color.White else Soft.copy(alpha = .35f)) }
             IconButton(onClick = {
                 isPlaying = !isPlaying
                 if (isPlaying && player.playbackState == Player.STATE_ENDED) player.seekTo(0)
@@ -370,7 +397,7 @@ private fun NewEditorScreen(
                                 Modifier.align(Alignment.CenterStart).width(14.dp).fillMaxHeight()
                                     .background(Gold.copy(alpha = .95f))
                                     .pointerInput(index) {
-                                        detectDragGestures { change, dragAmount ->
+                                        detectDragGestures(onDragStart = { recordUndo() }) { change, dragAmount ->
                                             change.consume()
                                             trimHandler.value(index, true, dragAmount.x)
                                         }
@@ -381,7 +408,7 @@ private fun NewEditorScreen(
                                 Modifier.align(Alignment.CenterEnd).width(14.dp).fillMaxHeight()
                                     .background(Gold.copy(alpha = .95f))
                                     .pointerInput(index) {
-                                        detectDragGestures { change, dragAmount ->
+                                        detectDragGestures(onDragStart = { recordUndo() }) { change, dragAmount ->
                                             change.consume()
                                             trimHandler.value(index, false, dragAmount.x)
                                         }
@@ -409,12 +436,13 @@ private fun NewEditorScreen(
                 Column(Modifier.width(72.dp).fillMaxHeight().clickable {
                     selectedTool = name
                     when (name) {
-                        "Split" -> { val clipStart = durations.take(selectedClip).sum(); val clip = timelineClips.getOrNull(selectedClip); val splitOffset = playhead - clipStart; if (clip == null || splitOffset <= 0L || splitOffset >= durations[selectedClip]) { Toast.makeText(context, "Move the playhead inside the selected clip to split it.", Toast.LENGTH_SHORT).show() } else { val sourceSplit = clip.sourceStartMs + splitOffset; val next = timelineClips.toMutableList().also { it[selectedClip] = clip.copy(sourceEndMs = sourceSplit); it.add(selectedClip + 1, clip.copy(sourceStartMs = sourceSplit)) }; timelineClips = next; selectedClip += 1; isPlaying = false; Toast.makeText(context, "Clip split into two timeline segments.", Toast.LENGTH_SHORT).show() } }
+                        "Split" -> { val clipStart = durations.take(selectedClip).sum(); val clip = timelineClips.getOrNull(selectedClip); val splitOffset = playhead - clipStart; if (clip == null || splitOffset <= 0L || splitOffset >= durations[selectedClip]) { Toast.makeText(context, "Move the playhead inside the selected clip to split it.", Toast.LENGTH_SHORT).show() } else { val sourceSplit = clip.sourceStartMs + splitOffset; val next = timelineClips.toMutableList().also { it[selectedClip] = clip.copy(sourceEndMs = sourceSplit); it.add(selectedClip + 1, clip.copy(sourceStartMs = sourceSplit)) }; recordUndo(); timelineClips = next; selectedClip += 1; isPlaying = false; Toast.makeText(context, "Clip split into two timeline segments.", Toast.LENGTH_SHORT).show() } }
                         "Delete" -> {
                             if (timelineClips.size <= 1) {
                                 Toast.makeText(context, "At least one video clip must remain in the project.", Toast.LENGTH_SHORT).show()
                             } else {
                                 val next = timelineClips.toMutableList().also { it.removeAt(selectedClip.coerceIn(0, it.lastIndex)) }
+                                recordUndo()
                                 val nextSelected = (selectedClip - 1).coerceAtLeast(0).coerceAtMost(next.lastIndex)
                                 timelineClips = next
                                 selectedClip = nextSelected
