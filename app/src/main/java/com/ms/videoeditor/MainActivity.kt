@@ -68,14 +68,14 @@ private fun MSVideoEditorApp() {
             projectName = "Untitled project"
         }
     }
-    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { picked -> audioUri = picked }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked -> audioUri = picked }
     if (editorOpen && clips.isNotEmpty()) {
         NewEditorScreen(
             clips = clips,
             audioUri = audioUri,
             onBack = { editorOpen = false },
             onAddVideo = { videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-            onAddAudio = { audioPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.AudioOnly)) },
+            onAddAudio = { audioPicker.launch("audio/*") },
             onExport = { Toast.makeText(context, "Export module will be connected after timeline editing is completed.", Toast.LENGTH_LONG).show() }
         )
     } else {
