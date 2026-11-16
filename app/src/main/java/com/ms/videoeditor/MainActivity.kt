@@ -1143,7 +1143,7 @@ private fun EditorScreen(
             val audioTools = listOf("Split", "Trim", "Fade", "Volume", "Audio effects", "Delete")
             Column(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 8.dp, vertical = 5.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.width(48.dp).height(64.dp).clickable { onTool("Trim") }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Column(Modifier.width(52.dp).height(76.dp).clickable { onTool("Trim") }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
                         Text("Back", color = Color.White, fontSize = 9.sp)
                     }
@@ -1156,14 +1156,14 @@ private fun EditorScreen(
                             "Audio effects" -> Icons.Default.AutoAwesome
                             else -> Icons.Default.Delete
                         }
-                        Column(Modifier.width(68.dp).height(64.dp).clickable {
+                        Column(Modifier.width(78.dp).height(76.dp).clickable {
                             when (tool) {
                                 "Delete" -> { deleteSelectedAudioClip(); onTool("Audio clip") }
                                 "Split", "Trim", "Fade", "Volume", "Audio effects" -> onTool("Audio $tool")
                             }
                         }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Icon(toolIcon, contentDescription = tool, tint = if (activeTool == "Audio $tool") Emerald else Color.White, modifier = Modifier.size(22.dp))
-                            Text(tool, color = if (activeTool == "Audio $tool") Emerald else Color.White, fontSize = 9.sp, maxLines = 1)
+                            Icon(toolIcon, contentDescription = tool, tint = if (activeTool == "Audio $tool") Emerald else Color.White, modifier = Modifier.size(26.dp))
+                            Text(tool, color = if (activeTool == "Audio $tool") Emerald else Color.White, fontSize = 10.sp, maxLines = 1)
                         }
                     }
                 }
@@ -1226,13 +1226,13 @@ private fun EditorScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(
-                    Modifier.width(42.dp).height(68.dp).clickable { editTrayOpen = false }.padding(4.dp),
+                    Modifier.width(52.dp).height(82.dp).clickable { editTrayOpen = false }.padding(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = Color.White, modifier = Modifier.size(23.dp))
-                    Spacer(Modifier.height(4.dp))
-                    Text("Back", color = Color.White, fontSize = 9.sp)
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = Color.White, modifier = Modifier.size(27.dp))
+                    Spacer(Modifier.height(5.dp))
+                    Text("Back", color = Color.White, fontSize = 10.sp)
                 }
                 editTools.forEach { tool ->
                     // Match the individual pictograms shown above each tool name in the user's PDF.
@@ -1274,7 +1274,7 @@ private fun EditorScreen(
                         else -> Icons.Default.Tune
                     }
                     Column(
-                        Modifier.width(62.dp).height(68.dp)
+                        Modifier.width(78.dp).height(82.dp)
                             .clickable {
                                 selectedTrack = "video"
                                 onTool(if (tool == "Volume") "Video Volume" else tool)
@@ -1282,9 +1282,9 @@ private fun EditorScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(toolIcon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.height(4.dp))
-                        Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 9.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Icon(toolIcon, contentDescription = tool, tint = if (activeTool == tool) Green else Color.White, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text(tool, color = if (activeTool == tool) Green else Color.White, fontSize = 11.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
