@@ -79,9 +79,9 @@ private fun MSVideoEditorApp() {
     var projectName by remember { mutableStateOf("New project") }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { picked ->
         if (picked.isNotEmpty()) {
-            clips = picked
+            clips = if (editorOpen) clips + picked else picked
             editorOpen = true
-            projectName = "Untitled project"
+            projectName = if (editorOpen) projectName else "Untitled project"
         }
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { picked -> audioUri = picked }
@@ -175,7 +175,25 @@ private fun NewEditorScreen(
     onExport: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var timelineClips by remember(clips) { mutableStateOf(clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) }) }
+    var timelineClips by remember { mutableStateOf(clips.map { uri -> val duration = readVideoDuration(context, uri); EditorClip(uri, 0L, duration, duration) }) }
+    var lastIncomingClips by remember { mutableStateOf(clips) }
+    LaunchedEffect(clips) {
+        val previous = lastIncomingClips
+        val additions = if (clips.size >= previous.size && clips.take(previous.size) == previous) {
+            clips.drop(previous.size)
+        } else {
+            clips.filterNot { it in previous }
+        }
+        if (additions.isNotEmpty()) {
+            val newSegments = additions.map { uri ->
+                val duration = readVideoDuration(context, uri)
+                EditorClip(uri, 0L, duration, duration)
+            }
+            timelineClips = timelineClips + newSegments
+            Toast.makeText(context, "${newSegments.size} video clip(s) added to timeline.", Toast.LENGTH_SHORT).show()
+        }
+        lastIncomingClips = clips
+    }
     val durations = remember(timelineClips) { timelineClips.map { (it.sourceEndMs - it.sourceStartMs).coerceAtLeast(1L) } }
     val totalDuration = durations.sum().coerceAtLeast(1L)
     val player = remember(timelineClips) {
