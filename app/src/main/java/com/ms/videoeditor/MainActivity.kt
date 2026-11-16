@@ -40,6 +40,19 @@ import android.media.MediaMetadataRetriever
 import android.graphics.Bitmap
 import kotlinx.coroutines.delay
 
+
+private data class EditorClip(val uri: Uri, val sourceStartMs: Long, val sourceEndMs: Long)
+
+private fun readVideoDuration(context: android.content.Context, uri: Uri): Long {
+    return runCatching {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(context, uri)
+        val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        retriever.release()
+        duration
+    }.getOrDefault(0L).coerceAtLeast(1L)
+}
+
 private val Bg = Color(0xFF050807)
 private val SurfaceDark = Color(0xFF101916)
 private val TrackDark = Color(0xFF1A2520)
@@ -159,22 +172,12 @@ private fun NewEditorScreen(
     onExport: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var timelineClips by remember(clips) { mutableStateOf(clips) }
-    val durations = remember(timelineClips) {
-        timelineClips.map { uri ->
-            runCatching {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(context, uri)
-                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                retriever.release()
-                duration
-            }.getOrDefault(0L)
-        }
-    }
+    var timelineClips by remember(clips) { mutableStateOf(clips.map { uri -> EditorClip(uri, 0L, readVideoDuration(context, uri)) }) }
+    val durations = remember(timelineClips) { timelineClips.map { (it.sourceEndMs - it.sourceStartMs).coerceAtLeast(1L) } }
     val totalDuration = durations.sum().coerceAtLeast(1L)
     val player = remember(timelineClips) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItems(timelineClips.map { MediaItem.fromUri(it) })
+            setMediaItems(timelineClips.map { clip -> MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.sourceStartMs).setEndPositionMs(clip.sourceEndMs).build()).build() })
             prepare()
             playWhenReady = false
         }
@@ -250,8 +253,8 @@ private fun NewEditorScreen(
         Row(Modifier.fillMaxWidth().height(78.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("VIDEO", color = Soft, fontSize = 9.sp, modifier = Modifier.width(54.dp), textAlign = TextAlign.Center)
             Row(Modifier.weight(1f).horizontalScroll(scroll).height(70.dp), verticalAlignment = Alignment.CenterVertically) {
-                timelineClips.forEachIndexed { index, uri ->
-                    val thumb = remember(uri) { loadFrame(context, uri) }
+                timelineClips.forEachIndexed { index, clip ->
+                    val thumb = remember(clip.uri) { loadFrame(context, clip.uri) }
                     Box(
                         Modifier.width((timelineWidth * (durations[index].coerceAtLeast(1L).toFloat() / totalDuration)).coerceAtLeast(100f).dp)
                             .fillMaxHeight().padding(end = 3.dp).clip(RoundedCornerShape(7.dp))
@@ -291,7 +294,7 @@ private fun NewEditorScreen(
                 Column(Modifier.width(72.dp).fillMaxHeight().clickable {
                     selectedTool = name
                     when (name) {
-                        "Split" -> Toast.makeText(context, "Split point selected at ${formatMs(playhead)}. Clip edit operation is being implemented.", Toast.LENGTH_SHORT).show()
+                        "Split" -> { val clipStart = durations.take(selectedClip).sum(); val clip = timelineClips.getOrNull(selectedClip); val splitOffset = playhead - clipStart; if (clip == null || splitOffset <= 0L || splitOffset >= durations[selectedClip]) { Toast.makeText(context, "Move the playhead inside the selected clip to split it.", Toast.LENGTH_SHORT).show() } else { val sourceSplit = clip.sourceStartMs + splitOffset; val next = timelineClips.toMutableList().also { it[selectedClip] = clip.copy(sourceEndMs = sourceSplit); it.add(selectedClip + 1, clip.copy(sourceStartMs = sourceSplit)) }; timelineClips = next; onClipsChanged(next.map { it.uri }); selectedClip += 1; isPlaying = false; Toast.makeText(context, "Clip split into two timeline segments.", Toast.LENGTH_SHORT).show() } }
                         "Delete" -> {
                             if (timelineClips.size <= 1) {
                                 Toast.makeText(context, "At least one video clip must remain in the project.", Toast.LENGTH_SHORT).show()
@@ -299,7 +302,7 @@ private fun NewEditorScreen(
                                 val next = timelineClips.toMutableList().also { it.removeAt(selectedClip.coerceIn(0, it.lastIndex)) }
                                 val nextSelected = (selectedClip - 1).coerceAtLeast(0).coerceAtMost(next.lastIndex)
                                 timelineClips = next
-                                onClipsChanged(next)
+                                onClipsChanged(next.map { it.uri })
                                 selectedClip = nextSelected
                                 playhead = durations.take(nextSelected).sum()
                                 isPlaying = false
